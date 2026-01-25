@@ -1,0 +1,22 @@
+# Azure Functions
+azure-functions
+
+# 웹 스크래핑 및 브라우저 자동화
+playwright
+beautifulsoup4
+requests
+
+# PDF 처리
+pypdf
+
+# 이메일 전송
+# smtplib와 email은 Python 표준 라이브러리이므로 별도 설치 불필요
+
+# 환경변수 관리
+python-dotenv
+
+# 유틸리티
+python-dateutil
+
+# iCloud Drive 업로드
+pyicloud
