@@ -74,7 +74,7 @@ class EmailSender:
         self,
         pdf_path: str,
         subject: Optional[str] = None,
-    ) -> bool:
+    ) -> tuple[bool, int]:
         """
         PDF 파일을 다중 수신자에게 개별 전송 (개인화된 수신거부 링크 포함)
 
@@ -83,7 +83,7 @@ class EmailSender:
             subject: 이메일 제목 (None이면 자동 생성)
 
         Returns:
-            전송 성공 여부
+            (전송 성공 여부, 성공한 수신인 수)
         """
         try:
             # DynamoDB에서 활성 수신인 조회
@@ -91,7 +91,7 @@ class EmailSender:
 
             if not recipients:
                 logger.warning("활성 수신인이 없습니다")
-                return False
+                return False, 0
 
             logger.info(f"이메일 전송 대상: {len(recipients)}명")
 
@@ -126,11 +126,11 @@ class EmailSender:
                     logger.error(f"이메일 전송 실패: {recipient.email} - {e}")
 
             logger.info(f"이메일 전송 완료: 성공 {success_count}명, 실패 {fail_count}명")
-            return success_count > 0
+            return success_count > 0, success_count
 
         except Exception as e:
             logger.error(f"이메일 전송 실패: {e}")
-            return False
+            return False, 0
 
     def _create_message(
         self, pdf_path: str, to_emails: List[str], subject: str, use_bcc: bool = False, recipient_email: Optional[str] = None
@@ -292,7 +292,7 @@ def send_pdf_email(
     return sender.send_email(pdf_path, recipient, subject)
 
 
-def send_pdf_bulk_email(pdf_path: str, subject: Optional[str] = None) -> bool:
+def send_pdf_bulk_email(pdf_path: str, subject: Optional[str] = None) -> tuple[bool, int]:
     """
     PDF 이메일 전송 메인 함수 (다중 수신자 BCC)
 
@@ -301,7 +301,7 @@ def send_pdf_bulk_email(pdf_path: str, subject: Optional[str] = None) -> bool:
         subject: 이메일 제목
 
     Returns:
-        전송 성공 여부
+        (전송 성공 여부, 성공한 수신인 수)
     """
     sender = EmailSender()
     return sender.send_bulk_email(pdf_path, subject)

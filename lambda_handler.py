@@ -6,12 +6,14 @@ import logging
 import os
 import json
 import time
+from datetime import datetime
 
 from src.scraper import download_pdf_sync
 from src.pdf_processor import process_pdf
 from src.email_sender import send_pdf_bulk_email
 from src.icloud_uploader import upload_to_icloud
 from src.structured_logging import get_structured_logger
+from src.delivery_tracker import DeliveryTracker
 
 # 로깅 설정
 logging.basicConfig(
@@ -49,6 +51,31 @@ def handler(event, context):
     processed_pdf_path = None
 
     try:
+        # 0. 중복 발송 체크
+        logger.info("0단계: 중복 발송 체크")
+        tracker = DeliveryTracker()
+
+        if tracker.is_delivered_today():
+            duration_ms = (time.time() - start_time) * 1000
+            logger.info("⚠️  오늘 이미 메일이 발송되었습니다. 중복 발송을 방지합니다.")
+
+            structured_logger.info(
+                event="duplicate_delivery_prevented",
+                message="오늘 이미 발송되어 중복 발송 방지",
+                duration_ms=duration_ms
+            )
+
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'message': '오늘 이미 메일이 발송되었습니다 (중복 발송 방지)',
+                    'skipped': True,
+                    'reason': 'already_delivered_today'
+                })
+            }
+
+        logger.info("✅ 중복 발송 체크 완료: 오늘 미발송 확인")
+
         # 1. PDF 다운로드 및 페이지 정보 수집
         logger.info("1단계: PDF 다운로드 시작")
         try:
@@ -81,15 +108,22 @@ def handler(event, context):
         processed_pdf_path = process_pdf(pdf_path, page_info)
         logger.info(f"PDF 처리 완료: {processed_pdf_path}")
 
-        # 3. 이메일 전송 (다중 수신인 BCC)
-        logger.info("3단계: 이메일 전송 시작 (다중 수신인 BCC)")
-        email_success = send_pdf_bulk_email(processed_pdf_path)
+        # 3. 이메일 전송 (다중 수신인 개별 전송)
+        logger.info("3단계: 이메일 전송 시작 (다중 수신인)")
+        email_success, recipient_count = send_pdf_bulk_email(processed_pdf_path)
 
         if not email_success:
             logger.error("이메일 전송 실패")
             raise Exception("이메일 전송 실패")
 
-        logger.info("이메일 전송 성공")
+        logger.info(f"이메일 전송 성공: {recipient_count}명")
+
+        # 3-1. 발송 이력 기록
+        logger.info("3-1단계: 발송 이력 기록")
+        pdf_date = datetime.now().strftime("%Y-%m-%d")
+        pdf_title = f"IT뉴스 [{pdf_date}]"
+        tracker.mark_as_delivered(recipient_count, pdf_title)
+        logger.info("발송 이력 기록 완료")
 
         # 4. iCloud Drive 업로드 (선택사항)
         logger.info("4단계: iCloud Drive 업로드 시작")
