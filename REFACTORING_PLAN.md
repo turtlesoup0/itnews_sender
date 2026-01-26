@@ -166,7 +166,7 @@ aws dynamodb create-table \
 ```bash
 git init
 git add .
-git commit -m "Initial commit: AWS Lambda 전자신문 자동화"
+git commit -m "Initial commit: AWS Lambda IT뉴스 자동화"
 ```
 
 ### 4.2 GitHub Actions 워크플로우

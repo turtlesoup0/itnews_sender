@@ -55,7 +55,7 @@ class EmailSender:
             # 제목 설정
             if not subject:
                 today = datetime.now().strftime("%Y-%m-%d")
-                subject = f"전자신문 [{today}]"
+                subject = f"IT뉴스 [{today}]"
 
             # 이메일 메시지 생성
             msg = self._create_message(pdf_path, [to_email], subject)
@@ -98,7 +98,7 @@ class EmailSender:
             # 제목 설정
             if not subject:
                 today = datetime.now().strftime("%Y-%m-%d")
-                subject = f"전자신문 [{today}]"
+                subject = f"IT뉴스 [{today}]"
 
             # 각 수신자에게 개별 전송
             success_count = 0
@@ -185,9 +185,9 @@ class EmailSender:
         <html>
             <head></head>
             <body>
-                <h2>전자신문 PDF 뉴스지면</h2>
+                <h2>IT뉴스 PDF 뉴스지면</h2>
                 <p>안녕하세요,</p>
-                <p>{today} 전자신문 PDF 뉴스지면을 보내드립니다.</p>
+                <p>{today} IT뉴스 PDF 뉴스지면을 보내드립니다.</p>
                 <p>광고 페이지가 제거된 파일입니다.</p>
                 <br>
                 <p>이 이메일은 자동으로 발송되었습니다.</p>

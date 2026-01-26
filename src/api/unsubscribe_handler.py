@@ -155,7 +155,7 @@ def create_success_page(email: str) -> str:
             <h1>✓ 수신거부가 완료되었습니다</h1>
             <p class="email">{email}</p>
         </div>
-        <p>전자신문 PDF 뉴스레터 수신이 중단되었습니다.</p>
+        <p>IT뉴스 PDF 뉴스레터 수신이 중단되었습니다.</p>
         <p>다시 수신을 원하시면 turtlesoup0@gmail.com으로 연락주세요.</p>
     </body>
     </html>

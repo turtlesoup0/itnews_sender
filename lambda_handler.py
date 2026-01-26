@@ -1,6 +1,6 @@
 """
 AWS Lambda 핸들러
-EventBridge에서 트리거되어 전자신문 PDF 다운로드 및 전송
+EventBridge에서 트리거되어 IT뉴스 PDF 다운로드 및 전송
 """
 import logging
 import os
@@ -35,12 +35,12 @@ def handler(event, context):
     """
     start_time = time.time()
 
-    logger.info("===== 전자신문 PDF 전송 작업 시작 =====")
+    logger.info("===== IT뉴스 PDF 전송 작업 시작 =====")
     logger.info(f"Event: {json.dumps(event)}")
 
     structured_logger.info(
         event="lambda_start",
-        message="전자신문 PDF 전송 작업 시작",
+        message="IT뉴스 PDF 전송 작업 시작",
         function_name=context.function_name if context else "local",
         request_id=context.request_id if context else "local"
     )
@@ -104,11 +104,11 @@ def handler(event, context):
 
         duration_ms = (time.time() - start_time) * 1000
 
-        logger.info("===== 전자신문 PDF 전송 작업 완료 =====")
+        logger.info("===== IT뉴스 PDF 전송 작업 완료 =====")
 
         structured_logger.info(
             event="lambda_success",
-            message="전자신문 PDF 전송 작업 완료",
+            message="IT뉴스 PDF 전송 작업 완료",
             duration_ms=duration_ms,
             pdf_path=pdf_path,
             processed_pdf_path=processed_pdf_path
@@ -117,7 +117,7 @@ def handler(event, context):
         return {
             'statusCode': 200,
             'body': json.dumps({
-                'message': '전자신문 PDF 전송 성공',
+                'message': 'IT뉴스 PDF 전송 성공',
                 'pdf_path': pdf_path,
                 'processed_pdf_path': processed_pdf_path,
                 'duration_ms': duration_ms
@@ -131,7 +131,7 @@ def handler(event, context):
 
         structured_logger.error(
             event="lambda_error",
-            message=f"전자신문 PDF 전송 작업 실패: {str(e)}",
+            message=f"IT뉴스 PDF 전송 작업 실패: {str(e)}",
             duration_ms=duration_ms,
             error=str(e),
             error_type=type(e).__name__
@@ -140,7 +140,7 @@ def handler(event, context):
         return {
             'statusCode': 500,
             'body': json.dumps({
-                'message': '전자신문 PDF 전송 실패',
+                'message': 'IT뉴스 PDF 전송 실패',
                 'error': str(e),
                 'error_type': type(e).__name__
             })

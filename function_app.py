@@ -24,7 +24,7 @@ app = func.FunctionApp()
 
 def run_etnews_workflow() -> bool:
     """
-    전자신문 워크플로우 실행
+    IT뉴스 워크플로우 실행
 
     Returns:
         성공 여부
@@ -64,7 +64,7 @@ def run_etnews_workflow() -> bool:
         except Exception as icloud_error:
             logger.warning(f"iCloud Drive 업로드 중 오류 (계속 진행): {icloud_error}")
 
-        logger.info("===== 전자신문 PDF 전송 작업 완료 =====")
+        logger.info("===== IT뉴스 PDF 전송 작업 완료 =====")
         return True
 
     except Exception as e:
@@ -83,10 +83,10 @@ def run_etnews_workflow() -> bool:
 )
 def etnews_pdf_sender(myTimer: func.TimerRequest) -> None:
     """
-    전자신문 PDF 자동 다운로드 및 전송 함수
+    IT뉴스 PDF 자동 다운로드 및 전송 함수
     매일 한국시간 06:00에 실행
     """
-    logger.info("===== 전자신문 PDF 전송 작업 시작 =====")
+    logger.info("===== IT뉴스 PDF 전송 작업 시작 =====")
 
     if myTimer.past_due:
         logger.warning("Timer is past due!")
@@ -114,7 +114,7 @@ def manual_trigger(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         run_etnews_workflow()
-        return func.HttpResponse("전자신문 PDF 전송 성공", status_code=200)
+        return func.HttpResponse("IT뉴스 PDF 전송 성공", status_code=200)
 
     except Exception as e:
         logger.error(f"수동 실행 중 오류: {e}", exc_info=True)

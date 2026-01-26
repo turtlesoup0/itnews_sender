@@ -58,7 +58,7 @@ class ICloudUploader:
     def upload_to_monthly_folder(self, pdf_path: str) -> bool:
         """
         PDF를 iCloud Drive의 연/월별 폴더에 업로드
-        경로 형식: 전자신문/26/2601/파일.pdf
+        경로 형식: IT뉴스/26/2601/파일.pdf
 
         Args:
             pdf_path: 업로드할 PDF 파일 경로
@@ -81,10 +81,10 @@ class ICloudUploader:
             year_short = now.strftime("%y")  # 26
             year_month = now.strftime("%y%m")  # 2601
 
-            # 루트 폴더 (전자신문)
+            # 루트 폴더 (IT뉴스)
             root_folder_name = self.config.ICLOUD_FOLDER_NAME
 
-            # 1. 루트 폴더 생성/접근 (전자신문)
+            # 1. 루트 폴더 생성/접근 (IT뉴스)
             if root_folder_name not in self.api.drive:
                 logger.info(f"폴더 생성: {root_folder_name}")
                 self.api.drive.mkdir(root_folder_name)
