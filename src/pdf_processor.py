@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 class PDFProcessor:
     """PDF 광고 제거 및 처리"""
 
+    # PDF 파일 최대 크기 (바이트): 50MB
+    MAX_PDF_SIZE = 50 * 1024 * 1024
+
     def __init__(self):
         self.config = Config
 
@@ -29,9 +32,22 @@ class PDFProcessor:
 
         Returns:
             처리된 PDF 파일 경로
+
+        Raises:
+            ValueError: PDF 파일 크기가 제한을 초과한 경우
         """
         try:
             logger.info(f"PDF 처리 시작: {pdf_path}")
+
+            # PDF 파일 크기 검증
+            file_size = os.path.getsize(pdf_path)
+            file_size_mb = file_size / (1024 * 1024)
+            logger.info(f"PDF 파일 크기: {file_size_mb:.2f} MB")
+
+            if file_size > self.MAX_PDF_SIZE:
+                error_msg = f"PDF 파일 크기가 너무 큽니다: {file_size_mb:.2f} MB (최대 {self.MAX_PDF_SIZE / (1024 * 1024)} MB)"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
 
             # PDF 읽기
             reader = PdfReader(pdf_path)

@@ -37,7 +37,19 @@ class EtnewsScraper:
         """브라우저 초기화"""
         logger.info("브라우저 초기화 중...")
         self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(headless=True)
+
+        # Lambda 환경을 위한 브라우저 옵션
+        launch_options = {
+            'headless': True,
+            'args': [
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--single-process'
+            ]
+        }
+
+        self.browser = await self.playwright.chromium.launch(**launch_options)
         self.page = await self.browser.new_page()
         logger.info("브라우저 초기화 완료")
 
@@ -121,6 +133,34 @@ class EtnewsScraper:
             logger.warning(f"구독 정보 확인 중 오류: {e}")
             return True  # 오류가 있어도 계속 진행
 
+    async def check_newspaper_availability(self) -> bool:
+        """
+        신문 발행 여부 확인
+
+        Returns:
+            bool: 신문이 발행된 경우 True, 미발행인 경우 False
+        """
+        try:
+            # 페이지 HTML 가져오기
+            content = await self.page.content()
+
+            # "선택하신 날짜에는 신문이 발행되지 않았거나" 문구 확인
+            if "선택하신 날짜에는 신문이 발행되지 않았거나" in content:
+                logger.warning("신문이 발행되지 않은 날입니다")
+                return False
+
+            if "발행된 신문 원본이 없습니다" in content:
+                logger.warning("발행된 신문 원본이 없습니다")
+                return False
+
+            logger.info("신문 발행 확인됨")
+            return True
+
+        except Exception as e:
+            logger.error(f"신문 발행 여부 확인 중 오류: {e}")
+            # 오류 시에는 True 반환 (다운로드 시도)
+            return True
+
     async def get_page_info(self) -> List[Dict[str, str]]:
         """PDF 페이지 정보 수집 (광고 페이지 식별용)"""
         try:
@@ -181,8 +221,16 @@ class EtnewsScraper:
 
         Returns:
             (pdf_path, page_info_list): PDF 파일 경로와 페이지 정보 리스트
+
+        Raises:
+            ValueError: 신문이 발행되지 않은 날인 경우
         """
         try:
+            # 신문 발행 여부 확인
+            is_available = await self.check_newspaper_availability()
+            if not is_available:
+                raise ValueError("신문이 발행되지 않은 날입니다")
+
             # 페이지 정보 수집
             page_info = await self.get_page_info()
 

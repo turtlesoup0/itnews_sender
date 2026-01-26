@@ -2,36 +2,31 @@
 환경변수 및 설정 관리 모듈
 """
 import os
+import logging
 from dotenv import load_dotenv
+from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # .env 파일 로드 (로컬 개발 환경용)
 load_dotenv()
 
 
-class Config:
+class ConfigClass:
     """애플리케이션 설정 클래스"""
 
-    # 전자신문 계정
-    ETNEWS_USER_ID = os.getenv("ETNEWS_USER_ID")
-    ETNEWS_PASSWORD = os.getenv("ETNEWS_PASSWORD")
+    def __init__(self):
+        # Credentials (Secrets Manager에서 로드 가능)
+        self._credentials: Optional[dict] = None
+        self._credentials_loaded = False
+
+    # 전자신문 설정
     ETNEWS_LOGIN_URL = "https://member.etnews.com/member/login.html?return_url=https://pdf.etnews.com/pdf_today.html"
     ETNEWS_PDF_URL = "https://pdf.etnews.com/pdf_today.html"
 
     # Gmail SMTP 설정
-    GMAIL_USER = os.getenv("GMAIL_USER")
-    # Gmail 앱 비밀번호는 공백 제거 (Google이 공백 포함해서 제공하지만 실제로는 공백 없이 사용)
-    _gmail_app_password = os.getenv("GMAIL_APP_PASSWORD", "")
-    GMAIL_APP_PASSWORD = _gmail_app_password.replace(" ", "")
     GMAIL_SMTP_SERVER = "smtp.gmail.com"
     GMAIL_SMTP_PORT = 587
-
-    # 수신자 이메일
-    RECIPIENT_EMAIL = os.getenv("RECIPIENT_EMAIL", "turtlesoup0@gmail.com")
-
-    # iCloud Drive 설정
-    ICLOUD_EMAIL = os.getenv("ICLOUD_EMAIL")
-    ICLOUD_PASSWORD = os.getenv("ICLOUD_PASSWORD")
-    ICLOUD_FOLDER_NAME = os.getenv("ICLOUD_FOLDER_NAME", "전자신문")
 
     # 임시 파일 경로
     TEMP_DIR = "/tmp" if os.name != "nt" else os.getenv("TEMP", "temp")
@@ -51,9 +46,111 @@ class Config:
     SMTP_MAX_RETRIES = 3  # SMTP 전송 최대 재시도 횟수
     SMTP_RETRY_DELAY = 1  # SMTP 재시도 대기 시간 (초)
 
-    @classmethod
-    def validate(cls):
+    def _load_credentials(self):
+        """Credentials 로드 (Secrets Manager 또는 환경변수)"""
+        if self._credentials_loaded:
+            return
+
+        try:
+            # Lambda 환경 감지
+            is_lambda = os.environ.get('AWS_EXECUTION_ENV') is not None
+
+            if is_lambda:
+                logger.info("Lambda 환경: Parameter Store에서 credentials 로드")
+                from .parameter_store import get_credentials
+                self._credentials = get_credentials()
+            else:
+                logger.info("로컬 환경: 환경변수에서 credentials 로드")
+                self._credentials = {
+                    'ETNEWS_USER_ID': os.getenv('ETNEWS_USER_ID', ''),
+                    'ETNEWS_PASSWORD': os.getenv('ETNEWS_PASSWORD', ''),
+                    'GMAIL_USER': os.getenv('GMAIL_USER', ''),
+                    'GMAIL_APP_PASSWORD': os.getenv('GMAIL_APP_PASSWORD', ''),
+                    'RECIPIENT_EMAIL': os.getenv('RECIPIENT_EMAIL', ''),
+                    'ICLOUD_EMAIL': os.getenv('ICLOUD_EMAIL', ''),
+                    'ICLOUD_PASSWORD': os.getenv('ICLOUD_PASSWORD', ''),
+                    'ICLOUD_FOLDER_NAME': os.getenv('ICLOUD_FOLDER_NAME', '전자신문'),
+                }
+
+            self._credentials_loaded = True
+            logger.info("Credentials 로드 완료")
+
+        except Exception as e:
+            logger.error(f"Credentials 로드 실패: {e}")
+            # 실패 시 환경변수 fallback
+            self._credentials = {
+                'ETNEWS_USER_ID': os.getenv('ETNEWS_USER_ID', ''),
+                'ETNEWS_PASSWORD': os.getenv('ETNEWS_PASSWORD', ''),
+                'GMAIL_USER': os.getenv('GMAIL_USER', ''),
+                'GMAIL_APP_PASSWORD': os.getenv('GMAIL_APP_PASSWORD', ''),
+                'RECIPIENT_EMAIL': os.getenv('RECIPIENT_EMAIL', ''),
+                'ICLOUD_EMAIL': os.getenv('ICLOUD_EMAIL', ''),
+                'ICLOUD_PASSWORD': os.getenv('ICLOUD_PASSWORD', ''),
+                'ICLOUD_FOLDER_NAME': os.getenv('ICLOUD_FOLDER_NAME', '전자신문'),
+            }
+            self._credentials_loaded = True
+
+    def get_credential(self, key: str, default: str = '') -> str:
+        """
+        Credential 가져오기
+
+        Args:
+            key: credential 키
+            default: 기본값
+
+        Returns:
+            credential 값
+        """
+        self._load_credentials()
+        value = self._credentials.get(key, default)
+
+        # Gmail 앱 비밀번호는 공백 제거
+        if key == 'GMAIL_APP_PASSWORD':
+            value = value.replace(" ", "")
+
+        return value
+
+    # Property로 credential 접근 제공
+    @property
+    def ETNEWS_USER_ID(self):
+        return self.get_credential('ETNEWS_USER_ID')
+
+    @property
+    def ETNEWS_PASSWORD(self):
+        return self.get_credential('ETNEWS_PASSWORD')
+
+    @property
+    def GMAIL_USER(self):
+        return self.get_credential('GMAIL_USER')
+
+    @property
+    def GMAIL_APP_PASSWORD(self):
+        return self.get_credential('GMAIL_APP_PASSWORD')
+
+    @property
+    def RECIPIENT_EMAIL(self):
+        """
+        레거시: 단일 수신자 이메일 (더 이상 사용하지 않음)
+        다중 수신인은 DynamoDB에서 관리
+        """
+        return self.get_credential('RECIPIENT_EMAIL', '')
+
+    @property
+    def ICLOUD_EMAIL(self):
+        return self.get_credential('ICLOUD_EMAIL')
+
+    @property
+    def ICLOUD_PASSWORD(self):
+        return self.get_credential('ICLOUD_PASSWORD')
+
+    @property
+    def ICLOUD_FOLDER_NAME(self):
+        return self.get_credential('ICLOUD_FOLDER_NAME', '전자신문')
+
+    def validate(self):
         """필수 환경변수 검증"""
+        self._load_credentials()
+
         required_vars = [
             "ETNEWS_USER_ID",
             "ETNEWS_PASSWORD",
@@ -63,7 +160,7 @@ class Config:
 
         missing_vars = []
         for var in required_vars:
-            if not getattr(cls, var):
+            if not self.get_credential(var):
                 missing_vars.append(var)
 
         if missing_vars:
@@ -73,6 +170,9 @@ class Config:
 
         return True
 
+
+# 싱글톤 인스턴스 생성
+Config = ConfigClass()
 
 # 설정 유효성 검증 (모듈 임포트 시)
 if __name__ != "__main__":
