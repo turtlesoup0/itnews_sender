@@ -121,7 +121,7 @@ def get_credentials(parameter_name: str = "/etnews/credentials") -> Dict[str, st
             'RECIPIENT_EMAIL': os.environ.get('RECIPIENT_EMAIL', ''),
             'ICLOUD_EMAIL': os.environ.get('ICLOUD_EMAIL', ''),
             'ICLOUD_PASSWORD': os.environ.get('ICLOUD_PASSWORD', ''),
-            'ICLOUD_FOLDER_NAME': os.environ.get('ICLOUD_FOLDER_NAME', '전자신문'),
+            'ICLOUD_FOLDER_NAME': os.environ.get('ICLOUD_FOLDER_NAME', 'IT뉴스'),
         }
 
 

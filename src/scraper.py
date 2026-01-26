@@ -1,5 +1,5 @@
 """
-전자신문 웹 스크래핑 모듈
+IT뉴스 웹 스크래핑 모듈
 Playwright를 사용하여 로그인, PDF 다운로드 및 페이지 정보 수집
 """
 import os
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class EtnewsScraper:
-    """전자신문 PDF 다운로드 및 페이지 정보 수집"""
+    """IT뉴스 PDF 다운로드 및 페이지 정보 수집"""
 
     def __init__(self):
         self.config = Config
@@ -64,9 +64,9 @@ class EtnewsScraper:
             logger.info("Playwright 종료 완료")
 
     async def login(self) -> bool:
-        """전자신문 로그인"""
+        """IT뉴스 로그인"""
         try:
-            logger.info("전자신문 로그인 시도 중...")
+            logger.info("IT뉴스 로그인 시도 중...")
             await self.page.goto(
                 self.config.ETNEWS_LOGIN_URL,
                 timeout=self.config.BROWSER_TIMEOUT
@@ -172,7 +172,7 @@ class EtnewsScraper:
 
             page_info_list = []
 
-            # 전자신문 PDF 페이지 구조 파싱
+            # IT뉴스 PDF 페이지 구조 파싱
             # <dl class="clearfix"> 내의 <dt> 태그에서 페이지 정보 추출
             dl_elements = soup.find_all("dl", class_="clearfix")
 
@@ -272,7 +272,7 @@ class EtnewsScraper:
 
 async def download_etnews_pdf() -> Tuple[str, List[Dict[str, str]]]:
     """
-    전자신문 PDF 다운로드 메인 함수
+    IT뉴스 PDF 다운로드 메인 함수
 
     Returns:
         (pdf_path, page_info_list): PDF 파일 경로와 페이지 정보 리스트

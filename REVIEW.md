@@ -1,9 +1,9 @@
-# 전자신문 PDF 자동화 시스템 전체 검토
+# IT뉴스 PDF 자동화 시스템 전체 검토
 
 ## Problem 1-Pager
 
 ### 배경 (Background)
-- 기존에 구현된 전자신문 PDF 다운로드/전송 시스템이 AWS Lambda로 마이그레이션됨
+- 기존에 구현된 IT뉴스 PDF 다운로드/전송 시스템이 AWS Lambda로 마이그레이션됨
 - 다중 수신인 관리 기능과 수신거부 기능이 추가됨
 - 민감정보를 Parameter Store로 이전하여 보안 강화
 - 프로덕션 배포를 앞두고 전체 코드/아키텍처 검증 필요
@@ -50,7 +50,7 @@
 EventBridge Scheduler (매일 06:00 KST)
     ↓
 Main Lambda (etnews-pdf-sender)
-    → Scraper: 전자신문 로그인 + PDF 다운로드
+    → Scraper: IT뉴스 로그인 + PDF 다운로드
     → PDF Processor: 광고 페이지 제거
     → Recipient Manager: DynamoDB에서 활성 수신인 조회
     → Email Sender: 개별 이메일 전송 (수신거부 링크 포함)

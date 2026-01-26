@@ -20,7 +20,7 @@ class ConfigClass:
         self._credentials: Optional[dict] = None
         self._credentials_loaded = False
 
-    # 전자신문 설정
+    # IT뉴스 설정
     ETNEWS_LOGIN_URL = "https://member.etnews.com/member/login.html?return_url=https://pdf.etnews.com/pdf_today.html"
     ETNEWS_PDF_URL = "https://pdf.etnews.com/pdf_today.html"
 
@@ -69,7 +69,7 @@ class ConfigClass:
                     'RECIPIENT_EMAIL': os.getenv('RECIPIENT_EMAIL', ''),
                     'ICLOUD_EMAIL': os.getenv('ICLOUD_EMAIL', ''),
                     'ICLOUD_PASSWORD': os.getenv('ICLOUD_PASSWORD', ''),
-                    'ICLOUD_FOLDER_NAME': os.getenv('ICLOUD_FOLDER_NAME', '전자신문'),
+                    'ICLOUD_FOLDER_NAME': os.getenv('ICLOUD_FOLDER_NAME', 'IT뉴스'),
                 }
 
             self._credentials_loaded = True
@@ -86,7 +86,7 @@ class ConfigClass:
                 'RECIPIENT_EMAIL': os.getenv('RECIPIENT_EMAIL', ''),
                 'ICLOUD_EMAIL': os.getenv('ICLOUD_EMAIL', ''),
                 'ICLOUD_PASSWORD': os.getenv('ICLOUD_PASSWORD', ''),
-                'ICLOUD_FOLDER_NAME': os.getenv('ICLOUD_FOLDER_NAME', '전자신문'),
+                'ICLOUD_FOLDER_NAME': os.getenv('ICLOUD_FOLDER_NAME', 'IT뉴스'),
             }
             self._credentials_loaded = True
 
@@ -145,7 +145,7 @@ class ConfigClass:
 
     @property
     def ICLOUD_FOLDER_NAME(self):
-        return self.get_credential('ICLOUD_FOLDER_NAME', '전자신문')
+        return self.get_credential('ICLOUD_FOLDER_NAME', 'IT뉴스')
 
     def validate(self):
         """필수 환경변수 검증"""

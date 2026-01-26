@@ -57,10 +57,10 @@ Lambda 실행 역할(`etnews-lambda-role`)에 다음 정책 추가:
    RECIPIENT_EMAIL: turtlesoup0@gmail.com
    ICLOUD_EMAIL: turtlesoup0.kr@gmail.com
    ICLOUD_PASSWORD: ckol-sbse-kzkh-wdmw
-   ICLOUD_FOLDER_NAME: 전자신문
+   ICLOUD_FOLDER_NAME: IT뉴스
    ```
 5. Secret name: `etnews-credentials`
-6. Description: "전자신문 PDF 자동 전송 시스템 Credentials"
+6. Description: "IT뉴스 PDF 자동 전송 시스템 Credentials"
 7. "Next" → "Next" → "Store" 클릭
 
 #### 방법 2: AWS CLI 사용
@@ -75,7 +75,7 @@ Lambda 실행 역할(`etnews-lambda-role`)에 다음 정책 추가:
 # 시크릿 생성
 aws secretsmanager create-secret \
   --name etnews-credentials \
-  --description "전자신문 PDF 자동 전송 시스템 Credentials" \
+  --description "IT뉴스 PDF 자동 전송 시스템 Credentials" \
   --secret-string '{
     "ETNEWS_USER_ID": "turtlesoup0",
     "ETNEWS_PASSWORD": "$ER3w%Tm",
@@ -84,7 +84,7 @@ aws secretsmanager create-secret \
     "RECIPIENT_EMAIL": "turtlesoup0@gmail.com",
     "ICLOUD_EMAIL": "turtlesoup0.kr@gmail.com",
     "ICLOUD_PASSWORD": "ckol-sbse-kzkh-wdmw",
-    "ICLOUD_FOLDER_NAME": "전자신문"
+    "ICLOUD_FOLDER_NAME": "IT뉴스"
   }' \
   --region ap-northeast-2
 ```
