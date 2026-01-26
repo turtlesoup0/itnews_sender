@@ -22,7 +22,8 @@ from src.recipients import RecipientManager
 
 def print_recipient(recipient):
     """수신인 정보 출력"""
-    print(f"  - {recipient.email:30s} | {recipient.name:10s} | {recipient.status.value:12s} | {recipient.created_at}")
+    last_delivery = recipient.last_delivery_date or "미발송"
+    print(f"  - {recipient.email:30s} | {recipient.name:10s} | {recipient.status.value:12s} | 마지막 발송: {last_delivery:12s} | {recipient.created_at}")
 
 
 def cmd_add(manager, email, name):

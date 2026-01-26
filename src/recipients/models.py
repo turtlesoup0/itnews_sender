@@ -23,6 +23,7 @@ class Recipient:
     status: RecipientStatus
     created_at: str
     unsubscribed_at: Optional[str] = None
+    last_delivery_date: Optional[str] = None  # YYYY-MM-DD 형식
 
     @staticmethod
     def validate_email(email: str) -> bool:
@@ -55,6 +56,7 @@ class Recipient:
             status=RecipientStatus(item["status"]),
             created_at=item["created_at"],
             unsubscribed_at=item.get("unsubscribed_at"),
+            last_delivery_date=item.get("last_delivery_date"),
         )
 
     def to_dynamodb(self) -> dict:
@@ -73,6 +75,9 @@ class Recipient:
 
         if self.unsubscribed_at:
             item["unsubscribed_at"] = self.unsubscribed_at
+
+        if self.last_delivery_date:
+            item["last_delivery_date"] = self.last_delivery_date
 
         return item
 
