@@ -110,19 +110,17 @@ def handler(event, context):
 
         # 3. 이메일 전송 (다중 수신인 개별 전송)
         logger.info("3단계: 이메일 전송 시작 (다중 수신인)")
-        email_success, recipient_count = send_pdf_bulk_email(processed_pdf_path)
+        email_success, success_emails = send_pdf_bulk_email(processed_pdf_path)
 
         if not email_success:
             logger.error("이메일 전송 실패")
             raise Exception("이메일 전송 실패")
 
-        logger.info(f"이메일 전송 성공: {recipient_count}명")
+        logger.info(f"이메일 전송 성공: {len(success_emails)}명")
 
-        # 3-1. 발송 이력 기록
+        # 3-1. 발송 이력 기록 (수신인별 last_delivery_date 업데이트)
         logger.info("3-1단계: 발송 이력 기록")
-        pdf_date = datetime.now().strftime("%Y-%m-%d")
-        pdf_title = f"IT뉴스 [{pdf_date}]"
-        tracker.mark_as_delivered(recipient_count, pdf_title)
+        tracker.mark_as_delivered(success_emails)
         logger.info("발송 이력 기록 완료")
 
         # 4. iCloud Drive 업로드 (선택사항)
