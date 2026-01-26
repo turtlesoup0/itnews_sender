@@ -1,6 +1,9 @@
 # Azure Functions
 azure-functions
 
+# AWS SDK (Secrets Manager)
+boto3
+
 # 웹 스크래핑 및 브라우저 자동화
 playwright
 beautifulsoup4

@@ -9,9 +9,11 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from .config import Config
+from .recipients import get_active_recipients
+from .unsubscribe_token import generate_token
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,13 @@ class EmailSender:
 
     def __init__(self):
         self.config = Config
+        # 수신거부 토큰 생성을 위한 시크릿 키
+        self.unsubscribe_secret = os.getenv("UNSUBSCRIBE_SECRET", "etnews-unsubscribe-secret-2026")
+        # Lambda Function URL for unsubscribe
+        self.unsubscribe_url_base = os.getenv(
+            "UNSUBSCRIBE_FUNCTION_URL",
+            "https://heswdvaag57hgz3ugvxk6ifqpq0ukhog.lambda-url.ap-northeast-2.on.aws"
+        )
 
     def send_email(
         self,
@@ -29,7 +38,7 @@ class EmailSender:
         subject: Optional[str] = None,
     ) -> bool:
         """
-        PDF 파일을 첨부하여 이메일 전송
+        PDF 파일을 첨부하여 이메일 전송 (단일 수신자)
 
         Args:
             pdf_path: 전송할 PDF 파일 경로
@@ -49,10 +58,10 @@ class EmailSender:
                 subject = f"전자신문 [{today}]"
 
             # 이메일 메시지 생성
-            msg = self._create_message(pdf_path, to_email, subject)
+            msg = self._create_message(pdf_path, [to_email], subject)
 
             # SMTP 서버 연결 및 전송
-            self._send_via_smtp(msg, to_email)
+            self._send_via_smtp(msg, [to_email])
 
             logger.info(f"이메일 전송 성공: {to_email}")
             return True
@@ -61,19 +70,88 @@ class EmailSender:
             logger.error(f"이메일 전송 실패: {e}")
             return False
 
+    def send_bulk_email(
+        self,
+        pdf_path: str,
+        subject: Optional[str] = None,
+    ) -> bool:
+        """
+        PDF 파일을 다중 수신자에게 개별 전송 (개인화된 수신거부 링크 포함)
+
+        Args:
+            pdf_path: 전송할 PDF 파일 경로
+            subject: 이메일 제목 (None이면 자동 생성)
+
+        Returns:
+            전송 성공 여부
+        """
+        try:
+            # DynamoDB에서 활성 수신인 조회
+            recipients = get_active_recipients()
+
+            if not recipients:
+                logger.warning("활성 수신인이 없습니다")
+                return False
+
+            logger.info(f"이메일 전송 대상: {len(recipients)}명")
+
+            # 제목 설정
+            if not subject:
+                today = datetime.now().strftime("%Y-%m-%d")
+                subject = f"전자신문 [{today}]"
+
+            # 각 수신자에게 개별 전송
+            success_count = 0
+            fail_count = 0
+
+            for recipient in recipients:
+                try:
+                    # 개인화된 이메일 메시지 생성
+                    msg = self._create_message(
+                        pdf_path,
+                        [recipient.email],
+                        subject,
+                        use_bcc=False,
+                        recipient_email=recipient.email
+                    )
+
+                    # SMTP 서버 연결 및 전송
+                    self._send_via_smtp(msg, [recipient.email])
+
+                    success_count += 1
+                    logger.info(f"이메일 전송 완료: {recipient.email} ({success_count}/{len(recipients)})")
+
+                except Exception as e:
+                    fail_count += 1
+                    logger.error(f"이메일 전송 실패: {recipient.email} - {e}")
+
+            logger.info(f"이메일 전송 완료: 성공 {success_count}명, 실패 {fail_count}명")
+            return success_count > 0
+
+        except Exception as e:
+            logger.error(f"이메일 전송 실패: {e}")
+            return False
+
     def _create_message(
-        self, pdf_path: str, to_email: str, subject: str
+        self, pdf_path: str, to_emails: List[str], subject: str, use_bcc: bool = False, recipient_email: Optional[str] = None
     ) -> MIMEMultipart:
         """이메일 메시지 생성"""
 
         # 메시지 객체 생성
         msg = MIMEMultipart()
         msg["From"] = self.config.GMAIL_USER
-        msg["To"] = to_email
         msg["Subject"] = subject
 
-        # 이메일 본문 생성
-        body = self._create_email_body()
+        if use_bcc:
+            # BCC로 전송 (수신자 숨김)
+            msg["To"] = self.config.GMAIL_USER  # 발신자 자신에게
+            msg["Bcc"] = ", ".join(to_emails)
+        else:
+            # 일반 전송
+            msg["To"] = ", ".join(to_emails)
+
+        # 이메일 본문 생성 (개인화된 수신거부 링크)
+        body = self._create_email_body(recipient_email)
         msg.attach(MIMEText(body, "html", "utf-8"))
 
         # PDF 파일 첨부
@@ -81,9 +159,27 @@ class EmailSender:
 
         return msg
 
-    def _create_email_body(self) -> str:
+    def _generate_unsubscribe_token(self, email: str) -> str:
+        """
+        수신거부 토큰 생성 (HMAC 기반)
+
+        Args:
+            email: 이메일 주소
+
+        Returns:
+            Base64 인코딩된 토큰
+        """
+        return generate_token(email, self.unsubscribe_secret)
+
+    def _create_email_body(self, recipient_email: Optional[str] = None) -> str:
         """이메일 본문 HTML 생성"""
         today = datetime.now().strftime("%Y년 %m월 %d일")
+
+        # 수신거부 URL 생성
+        unsubscribe_url = "#"
+        if recipient_email:
+            token = self._generate_unsubscribe_token(recipient_email)
+            unsubscribe_url = f"{self.unsubscribe_url_base}/?token={token}"
 
         body = f"""
         <html>
@@ -95,8 +191,15 @@ class EmailSender:
                 <p>광고 페이지가 제거된 파일입니다.</p>
                 <br>
                 <p>이 이메일은 자동으로 발송되었습니다.</p>
+                <p style="color: #666; font-size: 0.9em;">
+                    이 서비스는 오픈소스 프로젝트로 운영됩니다:
+                    <a href="https://github.com/turtlesoup0/itnews_sender" style="color: #0066cc;">GitHub 프로젝트 보기</a>
+                </p>
                 <hr>
-                <small>문의사항이 있으시면 turtlesoup0@gmail.com으로 연락주세요.</small>
+                <small>
+                    문의사항이 있으시면 turtlesoup0@gmail.com으로 연락주세요.<br>
+                    이 뉴스레터를 더 이상 받고 싶지 않으시면 <a href="{unsubscribe_url}" style="color: #666;">여기</a>를 클릭하세요.
+                </small>
             </body>
         </html>
         """
@@ -124,7 +227,7 @@ class EmailSender:
             logger.error(f"PDF 파일 첨부 실패: {e}")
             raise
 
-    def _send_via_smtp(self, msg: MIMEMultipart, to_email: str):
+    def _send_via_smtp(self, msg: MIMEMultipart, to_emails: List[str]):
         """SMTP 서버를 통해 이메일 전송"""
         max_retries = self.config.SMTP_MAX_RETRIES
         retry_count = 0
@@ -175,7 +278,7 @@ def send_pdf_email(
     pdf_path: str, recipient: Optional[str] = None, subject: Optional[str] = None
 ) -> bool:
     """
-    PDF 이메일 전송 메인 함수
+    PDF 이메일 전송 메인 함수 (단일 수신자)
 
     Args:
         pdf_path: 전송할 PDF 파일 경로
@@ -187,6 +290,21 @@ def send_pdf_email(
     """
     sender = EmailSender()
     return sender.send_email(pdf_path, recipient, subject)
+
+
+def send_pdf_bulk_email(pdf_path: str, subject: Optional[str] = None) -> bool:
+    """
+    PDF 이메일 전송 메인 함수 (다중 수신자 BCC)
+
+    Args:
+        pdf_path: 전송할 PDF 파일 경로
+        subject: 이메일 제목
+
+    Returns:
+        전송 성공 여부
+    """
+    sender = EmailSender()
+    return sender.send_bulk_email(pdf_path, subject)
 
 
 if __name__ == "__main__":
