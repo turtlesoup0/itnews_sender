@@ -95,6 +95,39 @@ class EtnewsScraper:
             logger.error(f"로그인 중 오류 발생: {e}")
             return False
 
+    def _send_admin_notification(self, subject: str, message: str):
+        """관리자에게 알림 이메일 전송"""
+        try:
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+
+            admin_email = "turtlesoup0@gmail.com"
+
+            msg = MIMEMultipart()
+            msg["From"] = self.config.GMAIL_USER
+            msg["To"] = admin_email
+            msg["Subject"] = subject
+
+            body = f"""
+            {message}
+
+            ---
+            IT뉴스 PDF 자동 배송 시스템
+            """
+
+            msg.attach(MIMEText(body, "plain", "utf-8"))
+
+            # SMTP 전송
+            with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                server.starttls()
+                server.login(self.config.GMAIL_USER, self.config.GMAIL_APP_PASSWORD)
+                server.send_message(msg)
+
+            logger.info(f"관리자 알림 전송 완료: {subject}")
+        except Exception as e:
+            logger.error(f"관리자 알림 전송 실패: {e}")
+
     async def check_subscription(self) -> bool:
         """PDF 서비스 구독 종료일 확인"""
         try:
@@ -117,11 +150,19 @@ class EtnewsScraper:
 
                 logger.info(f"PDF 서비스 종료일: {end_date_str} (남은 일수: {days_left}일)")
 
-                # 7일 이내 종료 시 경고
-                if days_left <= 7:
+                # 7일 이내 종료 시 경고 (관리자에게 이메일 전송)
+                if days_left <= 7 and days_left > 0:
                     logger.warning(f"⚠️  PDF 서비스 종료까지 {days_left}일 남았습니다. 갱신이 필요합니다!")
+                    self._send_admin_notification(
+                        subject="[경고] PDF 서비스 구독 만료 임박",
+                        message=f"PDF 서비스 종료까지 {days_left}일 남았습니다.\n종료일: {end_date_str}\n\n갱신이 필요합니다."
+                    )
                 elif days_left <= 0:
                     logger.error("❌ PDF 서비스가 종료되었습니다. 갱신이 필요합니다!")
+                    self._send_admin_notification(
+                        subject="[긴급] PDF 서비스 구독 만료됨",
+                        message=f"PDF 서비스가 종료되었습니다.\n종료일: {end_date_str}\n\n즉시 갱신이 필요합니다."
+                    )
                     return False
 
                 return True
