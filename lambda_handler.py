@@ -42,7 +42,7 @@ def handler(event, context):
         event="lambda_start",
         message="IT뉴스 PDF 전송 작업 시작",
         function_name=context.function_name if context else "local",
-        request_id=context.request_id if context else "local"
+        request_id=context.aws_request_id if context else "local"
     )
 
     pdf_path = None
