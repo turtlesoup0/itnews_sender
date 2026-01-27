@@ -4,6 +4,7 @@ Lambda 실행 이력 추적
 """
 import logging
 from datetime import datetime, timezone, timedelta
+from botocore.exceptions import ClientError
 
 from .recipients.dynamodb_client import DynamoDBClient
 
@@ -102,6 +103,7 @@ class ExecutionTracker:
             # TTL: 7일 후 자동 삭제
             ttl = int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
 
+            # 경쟁 조건 방지: 이미 존재하는 키면 실패
             table.put_item(
                 Item={
                     "execution_key": execution_key,
@@ -110,12 +112,19 @@ class ExecutionTracker:
                     "request_id": request_id,
                     "execution_time": now,
                     "ttl": ttl
-                }
+                },
+                ConditionExpression="attribute_not_exists(execution_key)"
             )
 
             logger.info(f"실행 이력 기록: {execution_key} (RequestId: {request_id})")
             return True
 
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                logger.warning(f"이미 기록된 실행: {execution_key} (중복 방지)")
+                return False
+            logger.error(f"실행 이력 기록 오류: {e}")
+            return False
         except Exception as e:
             logger.error(f"실행 이력 기록 오류: {e}")
             # 기록 실패해도 Lambda는 정상 진행 (중요하지 않은 메타데이터)
