@@ -8,7 +8,7 @@ import json
 import time
 from datetime import datetime
 
-from src.scraper import download_pdf_sync, _send_admin_notification
+from src.scraper import download_pdf_sync
 from src.pdf_processor import process_pdf
 from src.email_sender import send_pdf_bulk_email
 from src.icloud_uploader import upload_to_icloud
@@ -23,6 +23,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 structured_logger = get_structured_logger(__name__)
+
+
+def _send_admin_notification(subject: str, message: str):
+    """관리자에게 알림 이메일 전송"""
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        from src.config import Config
+
+        config = Config()
+        admin_email = "turtlesoup0@gmail.com"
+
+        msg = MIMEMultipart()
+        msg["From"] = config.GMAIL_USER
+        msg["To"] = admin_email
+        msg["Subject"] = subject
+
+        msg.attach(MIMEText(message, "plain"))
+
+        with smtplib.SMTP(config.SMTP_SERVER, config.SMTP_PORT) as server:
+            server.starttls()
+            server.login(config.GMAIL_USER, config.GMAIL_APP_PASSWORD)
+            server.send_message(msg)
+
+        logger.info(f"관리자 알림 전송 완료: {subject}")
+    except Exception as e:
+        logger.error(f"관리자 알림 전송 실패: {e}")
 
 
 def handler(event, context):
