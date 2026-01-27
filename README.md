@@ -144,6 +144,82 @@ Repository → Settings → Secrets and variables → Actions → Repository sec
 - Main Lambda: Docker 이미지 빌드 → ECR 푸시 → Lambda 업데이트
 - Unsubscribe Lambda: Zip 패키지 생성 → Lambda 업데이트
 
+### 4. AWS 리소스 설정
+
+DynamoDB 실패 추적 테이블 및 EventBridge 스케줄 설정:
+
+```bash
+# AWS 리소스 자동 설정
+bash scripts/setup_aws_resources.sh
+
+# 또는 수동 설정
+# 1. DynamoDB 테이블 생성
+aws dynamodb create-table \
+  --table-name etnews-delivery-failures \
+  --attribute-definitions AttributeName=date,AttributeType=S \
+  --key-schema AttributeName=date,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST \
+  --region ap-northeast-2
+
+# 2. EventBridge 스케줄에 OPR 모드 설정
+aws events put-targets \
+  --rule etnews-daily-trigger \
+  --targets 'Id=1,Arn=<Lambda ARN>,Input={"mode":"opr"}' \
+  --region ap-northeast-2
+```
+
+**Lambda IAM 권한 추가** (AWS Console에서 수동 설정):
+- Lambda > etnews-pdf-sender > 구성 > 권한 > 실행 역할 > 정책 추가
+- `etnews-delivery-failures` 테이블에 대한 `dynamodb:PutItem`, `GetItem`, `UpdateItem`, `DeleteItem` 권한
+
+## 테스트 모드
+
+### 실행 모드
+
+| 모드 | event 파라미터 | 수신인 | 발송 이력 기록 | 용도 |
+|------|---------------|--------|--------------|------|
+| **TEST** | `mode: "test"` 또는 미지정 | `turtlesoup0@gmail.com` 고정 | ❌ 기록 안 함 | 안전한 테스트 |
+| **OPR** | `mode: "opr"` | DynamoDB 활성 수신인 전체 | ✅ 기록 | 실제 운영 발송 |
+
+### 수동 트리거
+
+**TEST 모드 (기본 - 안전)**:
+```bash
+# 파라미터 없음 = TEST 모드
+aws lambda invoke \
+  --function-name etnews-pdf-sender \
+  --region ap-northeast-2 \
+  --payload '{}' \
+  response.json
+
+# 또는 명시적으로 test 지정
+aws lambda invoke \
+  --function-name etnews-pdf-sender \
+  --region ap-northeast-2 \
+  --payload '{"mode": "test"}' \
+  response.json
+```
+
+**OPR 모드 (운영 발송 - 신중히)**:
+```bash
+# ⚠️ 주의: 실제 수신인에게 메일 발송됨
+aws lambda invoke \
+  --function-name etnews-pdf-sender \
+  --region ap-northeast-2 \
+  --payload '{"mode": "opr"}' \
+  response.json
+```
+
+### 로그 모니터링
+
+```bash
+# 실시간 로그 확인
+aws logs tail /aws/lambda/etnews-pdf-sender --follow --region ap-northeast-2
+
+# 최근 10분 로그
+aws logs tail /aws/lambda/etnews-pdf-sender --since 10m --region ap-northeast-2
+```
+
 ## 주요 기술 스택
 
 - **언어**: Python 3.11
@@ -163,6 +239,9 @@ Repository → Settings → Secrets and variables → Actions → Repository sec
 3. **월별 로테이션**: 토큰이 자동으로 월별 갱신
 4. **상수 시간 비교**: 타이밍 공격 방지 (hmac.compare_digest)
 5. **IAM 권한 최소화**: Lambda 실행 역할에 필요한 권한만 부여
+6. **중복 발송 방지**: 수신인별 발송 이력 추적 (last_delivery_date)
+7. **실패 추적**: PDF 다운로드 3회 이상 실패 시 건너뛰기 및 관리자 알림
+8. **테스트 모드**: 기본값이 TEST 모드로 실수 발송 방지
 
 ## 비용 최적화
 
