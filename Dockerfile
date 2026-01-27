@@ -45,7 +45,7 @@ COPY src/ ./src/
 COPY lambda_handler.py .
 
 # Lambda 런타임 엔트리포인트 설정
-ENTRYPOINT [ "/usr/bin/python3", "-m", "awslambdaric" ]
+ENTRYPOINT [ "/usr/local/bin/python3", "-m", "awslambdaric" ]
 
 # Lambda 핸들러 설정
 CMD [ "lambda_handler.handler" ]
