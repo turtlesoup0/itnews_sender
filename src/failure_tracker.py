@@ -80,15 +80,22 @@ class FailureTracker:
         now = datetime.now(timezone.utc).isoformat()
 
         try:
+            # TTL: 7일 후 자동 삭제
+            ttl = int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
+
             # DynamoDB UpdateItem으로 원자적 증가
             table = self.db_client._get_table()
             response = table.update_item(
                 Key={"date": today},
-                UpdateExpression="ADD failure_count :inc SET last_error = :error, updated_at = :updated",
+                UpdateExpression="ADD failure_count :inc SET last_error = :error, updated_at = :updated, #ttl = :ttl",
+                ExpressionAttributeNames={
+                    "#ttl": "ttl"  # ttl은 예약어이므로 별칭 사용
+                },
                 ExpressionAttributeValues={
                     ":inc": 1,
                     ":error": error_message[:500],  # 최대 500자로 제한
-                    ":updated": now
+                    ":updated": now,
+                    ":ttl": ttl
                 },
                 ReturnValues="ALL_NEW"
             )
