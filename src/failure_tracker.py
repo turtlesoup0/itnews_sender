@@ -46,7 +46,8 @@ class FailureTracker:
 
         try:
             # DynamoDB에서 오늘 날짜 레코드 조회
-            response = self.db_client.table.get_item(Key={"date": today})
+            table = self.db_client._get_table()
+            response = table.get_item(Key={"date": today})
 
             if "Item" not in response:
                 return False
@@ -80,7 +81,8 @@ class FailureTracker:
 
         try:
             # DynamoDB UpdateItem으로 원자적 증가
-            response = self.db_client.table.update_item(
+            table = self.db_client._get_table()
+            response = table.update_item(
                 Key={"date": today},
                 UpdateExpression="ADD failure_count :inc SET last_error = :error, updated_at = :updated",
                 ExpressionAttributeValues={
@@ -109,7 +111,8 @@ class FailureTracker:
         today = self._get_today_date()
 
         try:
-            self.db_client.table.delete_item(Key={"date": today})
+            table = self.db_client._get_table()
+            table.delete_item(Key={"date": today})
             logger.info(f"실패 카운트 리셋: {today}")
             return True
 
@@ -130,7 +133,8 @@ class FailureTracker:
         target_date = date or self._get_today_date()
 
         try:
-            response = self.db_client.table.get_item(Key={"date": target_date})
+            table = self.db_client._get_table()
+            response = table.get_item(Key={"date": target_date})
 
             if "Item" not in response:
                 return None
