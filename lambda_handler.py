@@ -15,6 +15,7 @@ from src.icloud_uploader import upload_to_icloud
 from src.structured_logging import get_structured_logger
 from src.delivery_tracker import DeliveryTracker
 from src.failure_tracker import FailureTracker
+from src.execution_tracker import ExecutionTracker
 
 # 로깅 설정
 logging.basicConfig(
@@ -90,9 +91,35 @@ def handler(event, context):
     processed_pdf_path = None
 
     try:
-        # 0. 중복 발송 체크 (OPR 모드에만 적용)
+        # 0-1. 멱등성 체크 (중복 실행 방지)
+        logger.info("0-1단계: 멱등성 체크 (중복 실행 방지)")
+        exec_tracker = ExecutionTracker()
+
+        if exec_tracker.should_skip_execution(mode):
+            duration_ms = (time.time() - start_time) * 1000
+            logger.warning(f"⚠️  오늘 이미 {mode} 모드로 실행되었습니다. 중복 실행을 방지합니다.")
+
+            structured_logger.info(
+                event="duplicate_execution_prevented",
+                message=f"오늘 이미 {mode} 모드로 실행됨",
+                execution_mode=mode,
+                duration_ms=duration_ms
+            )
+
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'message': f'오늘 이미 {mode} 모드로 실행되었습니다 (중복 실행 방지)',
+                    'skipped': True,
+                    'reason': 'already_executed_today'
+                })
+            }
+
+        logger.info(f"✅ 멱등성 체크 완료: 오늘 {mode} 모드 미실행 확인")
+
+        # 0-2. 중복 발송 체크 (OPR 모드에만 적용)
         if not is_test_mode:
-            logger.info("0단계: 중복 발송 체크 (OPR 모드)")
+            logger.info("0-2단계: 중복 발송 체크 (OPR 모드)")
             tracker = DeliveryTracker()
 
             if tracker.is_delivered_today():
@@ -116,7 +143,7 @@ def handler(event, context):
 
             logger.info("✅ 중복 발송 체크 완료: 오늘 미발송 확인")
         else:
-            logger.info("0단계: 중복 발송 체크 건너뛰기 (TEST 모드)")
+            logger.info("0-2단계: 중복 발송 체크 건너뛰기 (TEST 모드)")
             tracker = DeliveryTracker()  # 발송 이력 기록용
 
         # 1. 실패 제한 체크
@@ -230,6 +257,12 @@ def handler(event, context):
             logger.info("발송 이력 기록 완료")
         else:
             logger.info("5단계: 발송 이력 기록 건너뛰기 (TEST 모드)")
+
+        # 5-1. 실행 이력 기록 (멱등성 보장)
+        logger.info("5-1단계: 실행 이력 기록 (멱등성 보장)")
+        request_id = context.aws_request_id if context else "local"
+        exec_tracker.mark_execution(mode, request_id)
+        logger.info(f"실행 이력 기록 완료: {mode} 모드, RequestId: {request_id}")
 
         # 6. iCloud Drive 업로드 (선택사항)
         logger.info("6단계: iCloud Drive 업로드 시작")
