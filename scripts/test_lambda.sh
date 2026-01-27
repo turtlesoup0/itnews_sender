@@ -18,12 +18,16 @@ echo ""
 
 # Timeout 충분히 설정 (5분)
 echo "Lambda 호출 중... (최대 5분 대기)"
+
+# Payload를 Base64 인코딩
+PAYLOAD=$(echo -n "{\"mode\": \"$MODE\"}" | base64)
+
 aws lambda invoke \
   --function-name "$FUNCTION_NAME" \
   --region "$REGION" \
   --cli-read-timeout 300 \
   --cli-connect-timeout 60 \
-  --payload "{\"mode\": \"$MODE\"}" \
+  --payload "$PAYLOAD" \
   "$OUTPUT_FILE"
 
 echo ""
