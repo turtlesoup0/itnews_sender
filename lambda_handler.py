@@ -6,6 +6,7 @@ import logging
 import os
 import json
 import time
+import re
 from datetime import datetime
 
 from src.scraper import download_pdf_sync
@@ -24,6 +25,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 structured_logger = get_structured_logger(__name__)
+
+
+def sanitize_error(error_msg: str) -> str:
+    """
+    오류 메시지에서 민감정보 필터링
+
+    비밀번호, 토큰, API 키 등 민감정보를 [REDACTED]로 대체
+
+    Args:
+        error_msg: 원본 오류 메시지
+
+    Returns:
+        str: 민감정보가 제거된 오류 메시지
+    """
+    patterns = [
+        (r'(password|passwd|pwd)=[^&\s]*', 'password=[REDACTED]'),
+        (r'(token|secret|key|apikey|api_key)=[^&\s]*', 'token=[REDACTED]'),
+        (r'Authorization:\s*[^\s]+', 'Authorization: [REDACTED]'),
+        (r'Bearer\s+[^\s]+', 'Bearer [REDACTED]'),
+        (r'"(password|passwd|pwd|token|secret|key)":\s*"[^"]*"', r'"\1": "[REDACTED]"'),
+    ]
+
+    sanitized = error_msg
+    for pattern, replacement in patterns:
+        sanitized = re.sub(pattern, replacement, sanitized, flags=re.IGNORECASE)
+
+    return sanitized
 
 
 def _send_admin_notification(subject: str, message: str):
@@ -68,7 +96,10 @@ def handler(event, context):
     start_time = time.time()
 
     logger.info("===== IT뉴스 PDF 전송 작업 시작 =====")
-    logger.info(f"Event: {json.dumps(event)}")
+
+    # 안전한 이벤트 로깅 (민감정보 제외)
+    safe_event = {k: v for k, v in event.items() if k in ['mode', 'request_id']}
+    logger.info(f"Event (safe): {json.dumps(safe_event)}")
 
     # 실행 모드 결정 (기본값: test)
     mode = event.get("mode", "test")
@@ -187,9 +218,10 @@ def handler(event, context):
                 # 3회째 실패면 관리자 알림
                 if count >= 3:
                     try:
+                        sanitized_error = sanitize_error(str(ve))
                         _send_admin_notification(
                             subject="[etnews-pdf-sender] PDF 다운로드 실패 알림",
-                            message=f"PDF 다운로드가 3회 연속 실패했습니다.\n\n오류: {ve}"
+                            message=f"PDF 다운로드가 3회 연속 실패했습니다.\n\n오류: {sanitized_error}"
                         )
                     except Exception as notify_error:
                         logger.error(f"관리자 알림 실패: {notify_error}")
@@ -203,9 +235,10 @@ def handler(event, context):
             # 3회째 실패면 관리자 알림
             if count >= 3:
                 try:
+                    sanitized_error = sanitize_error(str(e))
                     _send_admin_notification(
                         subject="[etnews-pdf-sender] PDF 다운로드 실패 알림",
-                        message=f"PDF 다운로드가 3회 연속 실패했습니다.\n\n오류: {e}"
+                        message=f"PDF 다운로드가 3회 연속 실패했습니다.\n\n오류: {sanitized_error}"
                     )
                 except Exception as notify_error:
                     logger.error(f"관리자 알림 실패: {notify_error}")
