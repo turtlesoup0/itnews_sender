@@ -74,6 +74,7 @@ class EmailSender:
         self,
         pdf_path: str,
         subject: Optional[str] = None,
+        test_mode: bool = False,
     ) -> tuple[bool, List[str]]:
         """
         PDF 파일을 다중 수신자에게 개별 전송 (개인화된 수신거부 링크 포함)
@@ -81,13 +82,27 @@ class EmailSender:
         Args:
             pdf_path: 전송할 PDF 파일 경로
             subject: 이메일 제목 (None이면 자동 생성)
+            test_mode: True면 turtlesoup0@gmail.com에게만 발송 (테스트용)
 
         Returns:
             (전송 성공 여부, 성공한 수신인 이메일 리스트)
         """
         try:
-            # DynamoDB에서 활성 수신인 조회
-            recipients = get_active_recipients()
+            # 테스트 모드: 관리자 이메일로 고정
+            if test_mode:
+                from .recipients.models import Recipient, RecipientStatus
+                test_recipient = Recipient(
+                    email="turtlesoup0@gmail.com",
+                    name="관리자 (테스트)",
+                    status=RecipientStatus.ACTIVE,
+                    created_at=datetime.now().isoformat()
+                )
+                recipients = [test_recipient]
+                logger.info("🧪 TEST 모드: turtlesoup0@gmail.com에게만 발송")
+            else:
+                # OPR 모드: DynamoDB 활성 수신인
+                recipients = get_active_recipients()
+                logger.info(f"🚀 OPR 모드: {len(recipients)}명 활성 수신인에게 발송")
 
             if not recipients:
                 logger.warning("활성 수신인이 없습니다")
@@ -292,19 +307,20 @@ def send_pdf_email(
     return sender.send_email(pdf_path, recipient, subject)
 
 
-def send_pdf_bulk_email(pdf_path: str, subject: Optional[str] = None) -> tuple[bool, List[str]]:
+def send_pdf_bulk_email(pdf_path: str, subject: Optional[str] = None, test_mode: bool = False) -> tuple[bool, List[str]]:
     """
     PDF 이메일 전송 메인 함수 (다중 수신자 개별 전송)
 
     Args:
         pdf_path: 전송할 PDF 파일 경로
         subject: 이메일 제목
+        test_mode: True면 테스트 모드 (turtlesoup0@gmail.com에게만 발송)
 
     Returns:
         (전송 성공 여부, 성공한 수신인 이메일 리스트)
     """
     sender = EmailSender()
-    return sender.send_bulk_email(pdf_path, subject)
+    return sender.send_bulk_email(pdf_path, subject, test_mode)
 
 
 if __name__ == "__main__":

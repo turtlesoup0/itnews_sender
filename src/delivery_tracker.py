@@ -48,7 +48,7 @@ class DeliveryTracker:
 
         if not recipients:
             logger.warning("활성 수신인이 없습니다")
-            return False
+            return True  # 발송 완료로 간주하여 조기 종료
 
         # 모든 수신인이 오늘 발송 받았는지 확인
         all_delivered = True

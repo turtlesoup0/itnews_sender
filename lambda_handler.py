@@ -8,12 +8,13 @@ import json
 import time
 from datetime import datetime
 
-from src.scraper import download_pdf_sync
+from src.scraper import download_pdf_sync, _send_admin_notification
 from src.pdf_processor import process_pdf
 from src.email_sender import send_pdf_bulk_email
 from src.icloud_uploader import upload_to_icloud
 from src.structured_logging import get_structured_logger
 from src.delivery_tracker import DeliveryTracker
+from src.failure_tracker import FailureTracker
 
 # 로깅 설정
 logging.basicConfig(
@@ -40,47 +41,93 @@ def handler(event, context):
     logger.info("===== IT뉴스 PDF 전송 작업 시작 =====")
     logger.info(f"Event: {json.dumps(event)}")
 
+    # 실행 모드 결정 (기본값: test)
+    mode = event.get("mode", "test")
+    is_test_mode = (mode != "opr")
+
+    if is_test_mode:
+        logger.info("🧪 TEST 모드로 실행 (수신인: turtlesoup0@gmail.com)")
+    else:
+        logger.info("🚀 OPR 모드로 실행 (수신인: DynamoDB 활성 수신인 전체)")
+
     structured_logger.info(
         event="lambda_start",
-        message="IT뉴스 PDF 전송 작업 시작",
+        message=f"IT뉴스 PDF 전송 작업 시작 (모드: {mode})",
         function_name=context.function_name if context else "local",
-        request_id=context.aws_request_id if context else "local"
+        request_id=context.aws_request_id if context else "local",
+        execution_mode=mode
     )
 
     pdf_path = None
     processed_pdf_path = None
 
     try:
-        # 0. 중복 발송 체크
-        logger.info("0단계: 중복 발송 체크")
-        tracker = DeliveryTracker()
+        # 0. 중복 발송 체크 (OPR 모드에만 적용)
+        if not is_test_mode:
+            logger.info("0단계: 중복 발송 체크 (OPR 모드)")
+            tracker = DeliveryTracker()
 
-        if tracker.is_delivered_today():
+            if tracker.is_delivered_today():
+                duration_ms = (time.time() - start_time) * 1000
+                logger.info("⚠️  오늘 이미 메일이 발송되었습니다. 중복 발송을 방지합니다.")
+
+                structured_logger.info(
+                    event="duplicate_delivery_prevented",
+                    message="오늘 이미 발송되어 중복 발송 방지",
+                    duration_ms=duration_ms
+                )
+
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({
+                        'message': '오늘 이미 메일이 발송되었습니다 (중복 발송 방지)',
+                        'skipped': True,
+                        'reason': 'already_delivered_today'
+                    })
+                }
+
+            logger.info("✅ 중복 발송 체크 완료: 오늘 미발송 확인")
+        else:
+            logger.info("0단계: 중복 발송 체크 건너뛰기 (TEST 모드)")
+            tracker = DeliveryTracker()  # 발송 이력 기록용
+
+        # 1. 실패 제한 체크
+        logger.info("1단계: 실패 제한 체크")
+        failure_tracker = FailureTracker()
+
+        if failure_tracker.should_skip_today():
             duration_ms = (time.time() - start_time) * 1000
-            logger.info("⚠️  오늘 이미 메일이 발송되었습니다. 중복 발송을 방지합니다.")
+            logger.error("오늘 3회 이상 실패하여 발송을 건너뜁니다")
 
-            structured_logger.info(
-                event="duplicate_delivery_prevented",
-                message="오늘 이미 발송되어 중복 발송 방지",
-                duration_ms=duration_ms
-            )
+            # 관리자 알림
+            try:
+                _send_admin_notification(
+                    subject="[etnews-pdf-sender] 발송 실패 알림",
+                    message="오늘 3회 이상 PDF 다운로드에 실패하여 발송을 건너뜁니다."
+                )
+            except Exception as notify_error:
+                logger.error(f"관리자 알림 실패: {notify_error}")
 
             return {
                 'statusCode': 200,
                 'body': json.dumps({
-                    'message': '오늘 이미 메일이 발송되었습니다 (중복 발송 방지)',
+                    'message': '오늘 3회 이상 실패하여 발송 건너뜀',
                     'skipped': True,
-                    'reason': 'already_delivered_today'
+                    'reason': 'too_many_failures'
                 })
             }
 
-        logger.info("✅ 중복 발송 체크 완료: 오늘 미발송 확인")
+        logger.info("✅ 실패 제한 체크 완료: 발송 진행 가능")
 
-        # 1. PDF 다운로드 및 페이지 정보 수집
-        logger.info("1단계: PDF 다운로드 시작")
+        # 2. PDF 다운로드 및 페이지 정보 수집
+        logger.info("2단계: PDF 다운로드 시작")
         try:
             pdf_path, page_info = download_pdf_sync()
             logger.info(f"PDF 다운로드 완료: {pdf_path}")
+
+            # 성공 시 실패 카운트 리셋
+            failure_tracker.reset_today()
+
         except ValueError as ve:
             # 신문 미발행일 처리
             if "신문이 발행되지 않은 날" in str(ve):
@@ -101,16 +148,46 @@ def handler(event, context):
                     })
                 }
             else:
-                raise
+                # PDF 다운로드 실패 카운트 증가
+                count = failure_tracker.increment_failure(str(ve))
+                logger.error(f"PDF 다운로드 실패 ({count}회): {ve}")
 
-        # 2. 광고 페이지 제거
-        logger.info("2단계: 광고 페이지 제거 시작")
+                # 3회째 실패면 관리자 알림
+                if count >= 3:
+                    try:
+                        _send_admin_notification(
+                            subject="[etnews-pdf-sender] PDF 다운로드 실패 알림",
+                            message=f"PDF 다운로드가 3회 연속 실패했습니다.\n\n오류: {ve}"
+                        )
+                    except Exception as notify_error:
+                        logger.error(f"관리자 알림 실패: {notify_error}")
+
+                raise
+        except Exception as e:
+            # 기타 다운로드 실패 처리
+            count = failure_tracker.increment_failure(str(e))
+            logger.error(f"PDF 다운로드 실패 ({count}회): {e}")
+
+            # 3회째 실패면 관리자 알림
+            if count >= 3:
+                try:
+                    _send_admin_notification(
+                        subject="[etnews-pdf-sender] PDF 다운로드 실패 알림",
+                        message=f"PDF 다운로드가 3회 연속 실패했습니다.\n\n오류: {e}"
+                    )
+                except Exception as notify_error:
+                    logger.error(f"관리자 알림 실패: {notify_error}")
+
+            raise
+
+        # 3. 광고 페이지 제거
+        logger.info("3단계: 광고 페이지 제거 시작")
         processed_pdf_path = process_pdf(pdf_path, page_info)
         logger.info(f"PDF 처리 완료: {processed_pdf_path}")
 
-        # 3. 이메일 전송 (다중 수신인 개별 전송)
-        logger.info("3단계: 이메일 전송 시작 (다중 수신인)")
-        email_success, success_emails = send_pdf_bulk_email(processed_pdf_path)
+        # 4. 이메일 전송 (모드에 따라 수신인 결정)
+        logger.info("4단계: 이메일 전송 시작")
+        email_success, success_emails = send_pdf_bulk_email(processed_pdf_path, test_mode=is_test_mode)
 
         if not email_success:
             logger.error("이메일 전송 실패")
@@ -118,13 +195,16 @@ def handler(event, context):
 
         logger.info(f"이메일 전송 성공: {len(success_emails)}명")
 
-        # 3-1. 발송 이력 기록 (수신인별 last_delivery_date 업데이트)
-        logger.info("3-1단계: 발송 이력 기록")
-        tracker.mark_as_delivered(success_emails)
-        logger.info("발송 이력 기록 완료")
+        # 5. 발송 이력 기록 (OPR 모드에만 기록)
+        if not is_test_mode:
+            logger.info("5단계: 발송 이력 기록 (OPR 모드)")
+            tracker.mark_as_delivered(success_emails)
+            logger.info("발송 이력 기록 완료")
+        else:
+            logger.info("5단계: 발송 이력 기록 건너뛰기 (TEST 모드)")
 
-        # 4. iCloud Drive 업로드 (선택사항)
-        logger.info("4단계: iCloud Drive 업로드 시작")
+        # 6. iCloud Drive 업로드 (선택사항)
+        logger.info("6단계: iCloud Drive 업로드 시작")
         try:
             icloud_success = upload_to_icloud(processed_pdf_path, use_monthly_folder=True)
             if icloud_success:
