@@ -109,7 +109,7 @@ def get_latest_weekly_trend_from_rss():
 
 def extract_streamdocs_id_from_detail_page(detail_id: str) -> Optional[str]:
     """
-    상세 페이지에서 StreamDocs ID 추출
+    getStreamDocsRegi.htm에서 StreamDocs 뷰어 URL을 따라가 StreamDocs ID 추출
 
     Args:
         detail_id: TVOL을 제외한 ID (예: "1388")
@@ -118,27 +118,56 @@ def extract_streamdocs_id_from_detail_page(detail_id: str) -> Optional[str]:
         StreamDocs ID 또는 None
     """
     try:
-        detail_url = f"https://www.itfind.or.kr/trend/weekly/weeklyDetail.do?id={detail_id}"
-        logger.info(f"상세 페이지에서 StreamDocs ID 추출: {detail_url}")
+        # 1단계: getStreamDocsRegi.htm 페이지 접근
+        streamdocs_regi_url = f"https://www.itfind.or.kr/admin/getStreamDocsRegi.htm?identifier=TVOL_{detail_id}"
+        logger.info(f"StreamDocs Regi 페이지 접근: {streamdocs_regi_url}")
 
-        response = requests.get(detail_url, timeout=30)
-        response.raise_for_status()
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            "Accept": "*/*",
+            "Referer": "https://www.itfind.or.kr/",
+        }
 
-        # HTML에서 streamdocsId 파라미터 찾기
-        # 패턴: streamdocsId=RtkNUpG5UfML1iXVCbU0-QqbinAUTQxwz58xRm02GRs
-        content = response.text
-        match = re.search(r'streamdocsId=([A-Za-z0-9_-]+)', content)
+        session = requests.Session()
+        response = session.get(streamdocs_regi_url, headers=headers, timeout=30, allow_redirects=True)
 
-        if match:
-            streamdocs_id = match.group(1)
-            logger.info(f"✅ StreamDocs ID 추출 성공: {streamdocs_id}")
-            return streamdocs_id
+        # JavaScript 리다이렉트 URL 추출
+        # 패턴: top.location.href="https://www.itfind.or.kr/publication/.../view.do?..."
+        js_redirect_match = re.search(r'location\.href\s*=\s*["\']([^"\']+)["\']', response.text)
 
-        logger.warning("상세 페이지에서 StreamDocs ID를 찾을 수 없습니다")
+        if js_redirect_match:
+            redirect_url = js_redirect_match.group(1)
+            logger.info(f"JavaScript 리다이렉트 URL 발견: {redirect_url}")
+
+            # 2단계: 리다이렉트된 페이지 접근 (자동으로 StreamDocs 뷰어로 redirect됨)
+            if not redirect_url.startswith('http'):
+                redirect_url = f"https://www.itfind.or.kr{redirect_url}"
+
+            response2 = session.get(redirect_url, headers=headers, timeout=30, allow_redirects=True)
+
+            logger.info(f"최종 URL: {response2.url}")
+
+            # 3단계: 최종 URL에서 StreamDocs ID 추출
+            # 패턴: https://www.itfind.or.kr/streamdocs/view/sd;streamdocsId=RtkNUpG5UfML1iXVCbU0-QqbinAUTQxwz58xRm02GRs
+            if 'streamdocsId=' in response2.url:
+                match = re.search(r'streamdocsId=([A-Za-z0-9_-]+)', response2.url)
+                if match:
+                    streamdocs_id = match.group(1)
+                    logger.info(f"✅ StreamDocs ID 추출 성공 (최종 URL): {streamdocs_id}")
+                    return streamdocs_id
+
+            # 4단계: HTML에서도 검색
+            match = re.search(r'streamdocsId=([A-Za-z0-9_-]+)', response2.text)
+            if match:
+                streamdocs_id = match.group(1)
+                logger.info(f"✅ StreamDocs ID 추출 성공 (HTML): {streamdocs_id}")
+                return streamdocs_id
+
+        logger.warning("StreamDocs ID를 찾을 수 없습니다")
         return None
 
     except Exception as e:
-        logger.error(f"StreamDocs ID 추출 실패: {e}")
+        logger.error(f"StreamDocs ID 추출 실패: {e}", exc_info=True)
         return None
 
 
@@ -167,17 +196,17 @@ def download_pdf_direct(streamdocs_id: str, save_path: str) -> bool:
         response = requests.get(api_url, headers=headers, timeout=60, stream=True)
         response.raise_for_status()
 
-        # PDF인지 확인
+        # PDF인지 확인 (Content-Type은 application/octet-stream일 수 있음)
         content_type = response.headers.get('content-type', '').lower()
-        if 'application/pdf' not in content_type:
-            # 첫 5바이트로 PDF 시그니처 확인
-            first_chunk = next(response.iter_content(5))
-            if first_chunk[:5] != b'%PDF-':
-                logger.error(f"응답이 PDF가 아닙니다: content-type={content_type}")
-                return False
+        logger.info(f"Content-Type: {content_type}")
 
-            # PDF 시그니처가 맞으면 계속 진행
-            logger.info("Content-Type은 PDF가 아니지만 PDF 시그니처 확인됨")
+        # PDF 시그니처로 확인 (가장 확실함)
+        first_chunk = next(response.iter_content(5), b'')
+        if first_chunk[:5] != b'%PDF-':
+            logger.error(f"응답이 PDF가 아닙니다: content-type={content_type}, 시그니처={first_chunk[:5]}")
+            return False
+
+        logger.info(f"✅ PDF 시그니처 확인됨: {first_chunk[:5]}")
 
         # 파일 저장
         os.makedirs(os.path.dirname(save_path) if os.path.dirname(save_path) else '.', exist_ok=True)
