@@ -1,0 +1,21 @@
+# ITFIND PDF 다운로더 전용 Dockerfile
+# Playwright가 필요한 별도 Lambda 함수
+
+FROM mcr.microsoft.com/playwright/python:v1.57.0-noble
+
+WORKDIR /var/task
+
+# requirements.txt 복사 및 설치
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir awslambdaric && \
+    pip3 install --no-cache-dir -r requirements.txt
+
+# 소스 코드 복사
+COPY src/ ./src/
+COPY lambda_itfind_downloader.py .
+
+# Lambda 런타임 엔트리포인트
+ENTRYPOINT [ "/usr/bin/python3", "-m", "awslambdaric" ]
+
+# Lambda 핸들러
+CMD [ "lambda_itfind_downloader.handler" ]
