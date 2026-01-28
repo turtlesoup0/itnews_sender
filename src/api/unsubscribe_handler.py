@@ -5,6 +5,7 @@ Lambda Function URL을 통해 호출되어 수신거부 처리
 import json
 import logging
 import os
+from ..config import Config
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -156,7 +157,7 @@ def create_success_page(email: str) -> str:
             <p class="email">{email}</p>
         </div>
         <p>IT뉴스 PDF 뉴스레터 수신이 중단되었습니다.</p>
-        <p>다시 수신을 원하시면 turtlesoup0@gmail.com으로 연락주세요.</p>
+        <p>다시 수신을 원하시면 {Config.ADMIN_EMAIL}으로 연락주세요.</p>
     </body>
     </html>
     """
@@ -202,7 +203,7 @@ def create_error_page(message: str) -> str:
             <h1>✗ 오류</h1>
             <p>{message}</p>
         </div>
-        <p>문제가 계속되면 turtlesoup0@gmail.com으로 연락주세요.</p>
+        <p>문제가 계속되면 {Config.ADMIN_EMAIL}으로 연락주세요.</p>
     </body>
     </html>
     """

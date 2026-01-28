@@ -1,7 +1,4 @@
-# Azure Functions
-azure-functions
-
-# AWS SDK (Secrets Manager)
+# AWS SDK (Boto3 - Lambda, DynamoDB, SSM Parameter Store)
 boto3
 
 # 웹 스크래핑 및 브라우저 자동화

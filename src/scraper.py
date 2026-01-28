@@ -96,37 +96,9 @@ class EtnewsScraper:
             return False
 
     def _send_admin_notification(self, subject: str, message: str):
-        """관리자에게 알림 이메일 전송"""
-        try:
-            import smtplib
-            from email.mime.text import MIMEText
-            from email.mime.multipart import MIMEMultipart
-
-            admin_email = "turtlesoup0@gmail.com"
-
-            msg = MIMEMultipart()
-            msg["From"] = self.config.GMAIL_USER
-            msg["To"] = admin_email
-            msg["Subject"] = subject
-
-            body = f"""
-            {message}
-
-            ---
-            IT뉴스 PDF 자동 배송 시스템
-            """
-
-            msg.attach(MIMEText(body, "plain", "utf-8"))
-
-            # SMTP 전송
-            with smtplib.SMTP("smtp.gmail.com", 587) as server:
-                server.starttls()
-                server.login(self.config.GMAIL_USER, self.config.GMAIL_APP_PASSWORD)
-                server.send_message(msg)
-
-            logger.info(f"관리자 알림 전송 완료: {subject}")
-        except Exception as e:
-            logger.error(f"관리자 알림 전송 실패: {e}")
+        """관리자에게 알림 이메일 전송 (공통 유틸리티 사용)"""
+        from .utils.notification import send_admin_notification
+        send_admin_notification(subject, message, include_signature=True)
 
     async def check_subscription(self) -> bool:
         """PDF 서비스 구독 종료일 확인"""

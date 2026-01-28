@@ -27,13 +27,10 @@ class EmailSender:
 
     def __init__(self):
         self.config = Config
-        # 수신거부 토큰 생성을 위한 시크릿 키
-        self.unsubscribe_secret = os.getenv("UNSUBSCRIBE_SECRET", "etnews-unsubscribe-secret-2026")
-        # Lambda Function URL for unsubscribe
-        self.unsubscribe_url_base = os.getenv(
-            "UNSUBSCRIBE_FUNCTION_URL",
-            "https://heswdvaag57hgz3ugvxk6ifqpq0ukhog.lambda-url.ap-northeast-2.on.aws"
-        )
+        # 수신거부 토큰 생성을 위한 시크릿 키 (Config에서 로드)
+        self.unsubscribe_secret = self.config.UNSUBSCRIBE_SECRET
+        # Lambda Function URL for unsubscribe (Config에서 로드)
+        self.unsubscribe_url_base = self.config.UNSUBSCRIBE_FUNCTION_URL
 
     def send_email(
         self,
@@ -100,13 +97,13 @@ class EmailSender:
             if test_mode:
                 from .recipients.models import Recipient, RecipientStatus
                 test_recipient = Recipient(
-                    email="turtlesoup0@gmail.com",
+                    email=self.config.ADMIN_EMAIL,
                     name="관리자 (테스트)",
                     status=RecipientStatus.ACTIVE,
                     created_at=datetime.now().isoformat()
                 )
                 recipients = [test_recipient]
-                logger.info("🧪 TEST 모드: turtlesoup0@gmail.com에게만 발송")
+                logger.info(f"🧪 TEST 모드: {self.config.ADMIN_EMAIL}에게만 발송")
             else:
                 # OPR 모드: DynamoDB 활성 수신인
                 recipients = get_active_recipients()
@@ -217,49 +214,69 @@ class EmailSender:
             token = self._generate_unsubscribe_token(recipient_email)
             unsubscribe_url = f"{self.unsubscribe_url_base}/?token={token}"
 
-        # 기본 본문
-        body = f"""
-        <html>
-            <head></head>
-            <body>
-                <h2>IT뉴스 PDF 뉴스지면</h2>
-                <p>안녕하세요,</p>
-                <p>{today} IT뉴스 PDF 뉴스지면을 보내드립니다.</p>
-                <p>광고 페이지가 제거된 파일입니다.</p>
-        """
-
-        # 수요일 ITFIND 정보 추가
+        # ITFIND 단독 발송인 경우
         if itfind_info:
-            topics_html = "<br>".join([f"• {topic}" for topic in itfind_info.topics])
-            body += f"""
-                <hr style="margin: 20px 0;">
-                <h3>📚 이번주 주간기술동향 ({itfind_info.issue_number})</h3>
-                <p><strong>{itfind_info.title}</strong></p>
-                <p>주요 토픽:</p>
-                <div style="margin-left: 20px;">
-                    {topics_html}
-                </div>
-                <p style="color: #666; font-size: 0.9em;">
-                    출처: <a href="https://www.itfind.or.kr/trend/weekly/weekly.do" style="color: #0066cc;">정보통신기획평가원 (IITP)</a>
-                </p>
-            """
+            # 모든 토픽 리스트 HTML 생성
+            topics_html = ""
+            if itfind_info.topics:
+                topic_items = "<br>".join([f"• {topic}" for topic in itfind_info.topics])
+                topics_html = f"""
+                    <h3>📑 이번 호 주요 토픽</h3>
+                    <div style="margin-left: 20px; line-height: 1.8;">
+                        {topic_items}
+                    </div>
+                """
 
-        # 마무리 부분
-        body += f"""
-                <br>
-                <p>이 이메일은 자동으로 발송되었습니다.</p>
-                <p style="color: #666; font-size: 0.9em;">
-                    이 서비스는 오픈소스 프로젝트로 운영됩니다:
-                    <a href="https://github.com/turtlesoup0/itnews_sender" style="color: #0066cc;">GitHub 프로젝트 보기</a>
-                </p>
-                <hr>
-                <small>
-                    문의사항이 있으시면 turtlesoup0@gmail.com으로 연락주세요.<br>
-                    이 뉴스레터를 더 이상 받고 싶지 않으시면 <a href="{unsubscribe_url}" style="color: #666;">여기</a>를 클릭하세요.
-                </small>
-            </body>
-        </html>
-        """
+            body = f"""
+            <html>
+                <head></head>
+                <body>
+                    <h2>📚 주간기술동향 {itfind_info.issue_number}호</h2>
+                    <p>안녕하세요,</p>
+                    <p>{today} 주간기술동향을 보내드립니다.</p>
+                    {topics_html}
+                    <br>
+                    <p style="color: #666; font-size: 0.9em;">
+                        출처: <a href="https://www.itfind.or.kr/trend/weekly/weekly.do" style="color: #0066cc;">정보통신기획평가원 (IITP)</a>
+                    </p>
+                    <br>
+                    <p>이 이메일은 자동으로 발송되었습니다.</p>
+                    <p style="color: #666; font-size: 0.9em;">
+                        이 서비스는 오픈소스 프로젝트로 운영됩니다:
+                        <a href="https://github.com/turtlesoup0/itnews_sender" style="color: #0066cc;">GitHub 프로젝트 보기</a>
+                    </p>
+                    <hr>
+                    <small>
+                        문의사항이 있으시면 {self.config.ADMIN_EMAIL}으로 연락주세요.<br>
+                        이 뉴스레터를 더 이상 받고 싶지 않으시면 <a href="{unsubscribe_url}" style="color: #666;">여기</a>를 클릭하세요.
+                    </small>
+                </body>
+            </html>
+            """
+        else:
+            # 전자신문 발송
+            body = f"""
+            <html>
+                <head></head>
+                <body>
+                    <h2>IT뉴스 PDF 뉴스지면</h2>
+                    <p>안녕하세요,</p>
+                    <p>{today} IT뉴스 PDF 뉴스지면을 보내드립니다.</p>
+                    <p>광고 페이지가 제거된 파일입니다.</p>
+                    <br>
+                    <p>이 이메일은 자동으로 발송되었습니다.</p>
+                    <p style="color: #666; font-size: 0.9em;">
+                        이 서비스는 오픈소스 프로젝트로 운영됩니다:
+                        <a href="https://github.com/turtlesoup0/itnews_sender" style="color: #0066cc;">GitHub 프로젝트 보기</a>
+                    </p>
+                    <hr>
+                    <small>
+                        문의사항이 있으시면 {self.config.ADMIN_EMAIL}으로 연락주세요.<br>
+                        이 뉴스레터를 더 이상 받고 싶지 않으시면 <a href="{unsubscribe_url}" style="color: #666;">여기</a>를 클릭하세요.
+                    </small>
+                </body>
+            </html>
+            """
         return body
 
     def _attach_pdf(self, msg: MIMEMultipart, pdf_path: str, pdf_type: str = "etnews"):
@@ -277,16 +294,20 @@ class EmailSender:
             # PDF 첨부 파일 생성
             pdf_attachment = MIMEApplication(pdf_data, _subtype="pdf")
 
-            # 파일명 결정
+            # 파일명 결정 (ASCII only for Gmail compatibility)
             if pdf_type == "itfind":
-                filename = f"ITFIND_주간기술동향_{datetime.now().strftime('%Y%m%d')}.pdf"
+                # 간단한 ASCII 파일명 (Gmail 웹 UI 호환성)
+                filename = f"itfind_{datetime.now().strftime('%Y%m%d')}.pdf"
             else:
                 filename = os.path.basename(pdf_path)
 
-            # UTF-8 인코딩된 파일명 설정 (RFC 2231)
+            # Content-Transfer-Encoding 명시
+            pdf_attachment.add_header('Content-Transfer-Encoding', 'base64')
+
+            # 단순한 파일명 (ASCII only)
             pdf_attachment.add_header(
                 "Content-Disposition",
-                f"attachment; filename*=UTF-8''{quote(filename)}"
+                f"attachment; filename=\"{filename}\""
             )
 
             msg.attach(pdf_attachment)

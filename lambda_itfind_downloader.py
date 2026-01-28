@@ -50,6 +50,12 @@ def get_latest_weekly_trend_from_rss():
 
         logger.info(f"RSS 피드 항목 수: {len(items)}")
 
+        # 첫 번째 주간기술동향의 호수 찾기
+        target_issue_number = None
+        topics = []
+        first_detail_id = None
+        first_pdf_url = None
+
         for item in items:
             title_elem = item.find('title')
             link_elem = item.find('link')
@@ -64,34 +70,50 @@ def get_latest_weekly_trend_from_rss():
             if not title or '[주간기술동향' not in title:
                 continue
 
-            logger.info(f"주간기술동향 발견: {title}")
-
             # 호수 추출
             issue_match = re.search(r'\[주간기술동향\s+(\d+)호\]', title)
-            issue_number = issue_match.group(1) if issue_match else "unknown"
+            if not issue_match:
+                continue
 
-            # detail_id 추출 (link에서 identifier 파라미터)
-            detail_id_match = re.search(r'identifier=([\w-]+)', link)
-            detail_id = detail_id_match.group(1).replace('TVOL_', '') if detail_id_match else None
+            issue_number = issue_match.group(1)
 
-            # PDF URL 변환: getFile.htm → StreamDocs viewer URL
-            # link: http://www.itfind.or.kr/admin/getFile.htm?identifier=02-001-260122-000003
-            # 상세 페이지를 통해 StreamDocs ID를 얻어야 하므로 일단 getStreamDocsRegi URL로 변환
-            if detail_id:
-                pdf_url = f"https://www.itfind.or.kr/admin/getStreamDocsRegi.htm?identifier=TVOL_{detail_id}"
-            else:
-                pdf_url = link.replace('http://', 'https://')
+            # 첫 번째 주간기술동향의 호수 저장
+            if target_issue_number is None:
+                target_issue_number = issue_number
+                logger.info(f"✅ 주간기술동향 발견: {title} ({issue_number}호)")
 
+                # detail_id 추출 (첫 번째 것만 사용)
+                detail_id_match = re.search(r'identifier=([\w-]+)', link)
+                first_detail_id = detail_id_match.group(1).replace('TVOL_', '') if detail_id_match else None
+
+                if first_detail_id:
+                    first_pdf_url = f"https://www.itfind.or.kr/admin/getStreamDocsRegi.htm?identifier=TVOL_{first_detail_id}"
+                else:
+                    first_pdf_url = link.replace('http://', 'https://')
+
+            # 같은 호수의 모든 토픽 수집
+            if issue_number == target_issue_number:
+                # 제목에서 토픽 추출 (호수 부분 제거)
+                topic = re.sub(r'\s*\[주간기술동향\s+\d+호\]', '', title).strip()
+                if topic:
+                    topics.append(topic)
+                    logger.info(f"   토픽 추가: {topic}")
+
+        if target_issue_number and first_detail_id:
             # 발행일 (현재 날짜로 근사)
             kst = timezone(timedelta(hours=9))
             publish_date = datetime.now(kst).strftime("%Y-%m-%d")
 
+            # 첫 번째 토픽을 대표 제목으로 사용
+            main_title = topics[0] if topics else f"주간기술동향 {target_issue_number}호"
+
             return {
-                'title': title,
-                'issue_number': issue_number,
+                'title': main_title,  # 첫 번째 토픽 (호수 제외)
+                'issue_number': target_issue_number,
                 'publish_date': publish_date,
-                'pdf_url': pdf_url,
-                'detail_id': detail_id
+                'pdf_url': first_pdf_url,
+                'detail_id': first_detail_id,
+                'topics': topics  # 모든 토픽 리스트
             }
 
         logger.warning("RSS 피드에서 주간기술동향을 찾을 수 없습니다")
