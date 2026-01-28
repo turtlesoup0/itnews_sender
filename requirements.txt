@@ -17,6 +17,3 @@ python-dotenv
 
 # 유틸리티
 python-dateutil
-
-# iCloud Drive 업로드
-pyicloud

@@ -67,9 +67,6 @@ class ConfigClass:
                     'GMAIL_USER': os.getenv('GMAIL_USER', ''),
                     'GMAIL_APP_PASSWORD': os.getenv('GMAIL_APP_PASSWORD', ''),
                     'RECIPIENT_EMAIL': os.getenv('RECIPIENT_EMAIL', ''),
-                    'ICLOUD_EMAIL': os.getenv('ICLOUD_EMAIL', ''),
-                    'ICLOUD_PASSWORD': os.getenv('ICLOUD_PASSWORD', ''),
-                    'ICLOUD_FOLDER_NAME': os.getenv('ICLOUD_FOLDER_NAME', 'IT뉴스'),
                 }
 
             self._credentials_loaded = True
@@ -84,9 +81,6 @@ class ConfigClass:
                 'GMAIL_USER': os.getenv('GMAIL_USER', ''),
                 'GMAIL_APP_PASSWORD': os.getenv('GMAIL_APP_PASSWORD', ''),
                 'RECIPIENT_EMAIL': os.getenv('RECIPIENT_EMAIL', ''),
-                'ICLOUD_EMAIL': os.getenv('ICLOUD_EMAIL', ''),
-                'ICLOUD_PASSWORD': os.getenv('ICLOUD_PASSWORD', ''),
-                'ICLOUD_FOLDER_NAME': os.getenv('ICLOUD_FOLDER_NAME', 'IT뉴스'),
             }
             self._credentials_loaded = True
 
@@ -134,18 +128,6 @@ class ConfigClass:
         다중 수신인은 DynamoDB에서 관리
         """
         return self.get_credential('RECIPIENT_EMAIL', '')
-
-    @property
-    def ICLOUD_EMAIL(self):
-        return self.get_credential('ICLOUD_EMAIL')
-
-    @property
-    def ICLOUD_PASSWORD(self):
-        return self.get_credential('ICLOUD_PASSWORD')
-
-    @property
-    def ICLOUD_FOLDER_NAME(self):
-        return self.get_credential('ICLOUD_FOLDER_NAME', 'IT뉴스')
 
     @property
     def UNSUBSCRIBE_FUNCTION_URL(self):
