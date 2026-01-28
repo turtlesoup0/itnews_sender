@@ -124,7 +124,7 @@ def handler(event, context):
         dict: 성공 여부 및 메타데이터
     """
     try:
-        logger.info(f"Lambda 시작: {context.request_id}")
+        logger.info(f"Lambda 시작: {context.aws_request_id}")
         logger.info(f"이벤트: {event}")
 
         # 비동기 함수 실행
