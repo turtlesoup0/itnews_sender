@@ -286,13 +286,13 @@ async def download_itfind_pdf() -> Optional[Dict[str, Any]]:
         s3_key = f"itfind/{today_str}/weekly_{trend['issue_number']}.pdf"
 
         with open(local_path, 'rb') as f:
+            # S3 Metadata는 ASCII만 허용하므로 한글 제목 제외
             s3_client.put_object(
                 Bucket=S3_BUCKET,
                 Key=s3_key,
                 Body=f,
                 ContentType='application/pdf',
                 Metadata={
-                    'title': trend['title'],
                     'issue_number': trend['issue_number'],
                     'publish_date': trend['publish_date'],
                     'download_date': today_str,
