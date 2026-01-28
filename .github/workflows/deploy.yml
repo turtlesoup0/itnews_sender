@@ -91,7 +91,6 @@ jobs:
         run: |
           mkdir -p /tmp/unsubscribe-lambda
           cp -r src /tmp/unsubscribe-lambda/
-          cp unsubscribe_lambda.py /tmp/unsubscribe-lambda/
           cd /tmp/unsubscribe-lambda
           pip3 install boto3 -t .
           zip -r /tmp/unsubscribe-lambda.zip .
