@@ -59,7 +59,9 @@ async def test_itfind_scraper():
         save_path = "/tmp/itfind_weekly_test.pdf"
 
         try:
-            downloaded_path = await scraper.download_weekly_pdf(trend.pdf_url, save_path)
+            # detail_url 생성
+            detail_url = f"https://www.itfind.or.kr/trend/weekly/weeklyDetail.do?id={trend.detail_id.split('&')[0]}"
+            downloaded_path = await scraper.download_weekly_pdf(trend.pdf_url, save_path, detail_url=detail_url)
             file_size = os.path.getsize(downloaded_path)
 
             print(f"✅ PDF 다운로드 성공")

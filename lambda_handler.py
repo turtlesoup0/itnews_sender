@@ -285,7 +285,9 @@ def handler(event, context):
                             kst = timezone(timedelta(hours=9))
                             today_str = datetime.now(kst).strftime("%Y%m%d")
                             save_path = f"/tmp/itfind_weekly_{today_str}.pdf"
-                            await scraper.download_weekly_pdf(trend.pdf_url, save_path)
+                            # detail_url 생성 (PDF 다운로드에 필요한 세션 유지용)
+                            detail_url = f"https://www.itfind.or.kr/trend/weekly/weeklyDetail.do?id={trend.detail_id}"
+                            await scraper.download_weekly_pdf(trend.pdf_url, save_path, detail_url=detail_url)
                             return trend, save_path
                         return None, None
 
