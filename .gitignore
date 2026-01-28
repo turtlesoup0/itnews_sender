@@ -53,3 +53,8 @@ Thumbs.db
 # 로그
 *.log
 debug/
+
+# 백업 및 레거시
+archive/
+*.backup
+*.bak
