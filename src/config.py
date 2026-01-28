@@ -147,6 +147,51 @@ class ConfigClass:
     def ICLOUD_FOLDER_NAME(self):
         return self.get_credential('ICLOUD_FOLDER_NAME', 'IT뉴스')
 
+    @property
+    def UNSUBSCRIBE_FUNCTION_URL(self):
+        """수신거부 Lambda Function URL"""
+        # Lambda 환경에서는 Parameter Store에서 로드
+        is_lambda = os.environ.get('AWS_EXECUTION_ENV') is not None
+        if is_lambda:
+            try:
+                from .parameter_store import get_parameter
+                return get_parameter('/etnews/unsubscribe-function-url')
+            except Exception as e:
+                logger.warning(f"Parameter Store에서 unsubscribe URL 로드 실패: {e}")
+
+        # 로컬 환경 또는 fallback
+        return os.getenv('UNSUBSCRIBE_FUNCTION_URL', '')
+
+    @property
+    def ADMIN_EMAIL(self):
+        """관리자 알림 수신 이메일"""
+        # Lambda 환경에서는 Parameter Store에서 로드
+        is_lambda = os.environ.get('AWS_EXECUTION_ENV') is not None
+        if is_lambda:
+            try:
+                from .parameter_store import get_parameter
+                return get_parameter('/etnews/admin-email')
+            except Exception as e:
+                logger.warning(f"Parameter Store에서 admin email 로드 실패: {e}")
+
+        # 로컬 환경 또는 fallback
+        return os.getenv('ADMIN_EMAIL', 'turtlesoup0@gmail.com')
+
+    @property
+    def UNSUBSCRIBE_SECRET(self):
+        """수신거부 HMAC Secret Key"""
+        # Lambda 환경에서는 Parameter Store에서 로드
+        is_lambda = os.environ.get('AWS_EXECUTION_ENV') is not None
+        if is_lambda:
+            try:
+                from .parameter_store import get_parameter
+                return get_parameter('/etnews/unsubscribe-secret', with_decryption=True)
+            except Exception as e:
+                logger.warning(f"Parameter Store에서 unsubscribe secret 로드 실패: {e}")
+
+        # 로컬 환경 또는 fallback
+        return os.getenv('UNSUBSCRIBE_SECRET', '')
+
     def validate(self):
         """필수 환경변수 검증"""
         self._load_credentials()

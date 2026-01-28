@@ -92,6 +92,29 @@ class ParameterStore:
 _parameter_store = ParameterStore()
 
 
+def get_parameter(parameter_name: str, with_decryption: bool = True) -> str:
+    """
+    단일 Parameter 가져오기
+
+    Args:
+        parameter_name: Parameter 이름 (예: /etnews/admin-email)
+        with_decryption: SecureString 복호화 여부
+
+    Returns:
+        Parameter 값 (문자열)
+    """
+    try:
+        client = _parameter_store._get_client()
+        response = client.get_parameter(
+            Name=parameter_name,
+            WithDecryption=with_decryption
+        )
+        return response['Parameter']['Value']
+    except ClientError as e:
+        logger.error(f"Parameter 조회 실패 ({parameter_name}): {e}")
+        raise
+
+
 def get_credentials(parameter_name: str = "/etnews/credentials") -> Dict[str, str]:
     """
     Credentials 가져오기

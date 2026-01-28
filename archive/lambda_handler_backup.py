@@ -19,10 +19,6 @@ from src.failure_tracker import FailureTracker
 from src.execution_tracker import ExecutionTracker
 from src.itfind_scraper import ItfindScraper
 
-# 워크플로우 모듈 (향후 점진적 리팩토링용)
-from src.workflow import check_idempotency, check_failure_limit
-from src.utils.notification import send_admin_notification
-
 # 로깅 설정
 logging.basicConfig(
     level=logging.INFO,
