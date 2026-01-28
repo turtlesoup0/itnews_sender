@@ -50,16 +50,33 @@ class ItfindScraper:
     async def __aenter__(self):
         """비동기 컨텍스트 매니저 진입 - Playwright 및 브라우저 시작"""
         from playwright.async_api import async_playwright
+        logger.info("Playwright 시작 중...")
         self.playwright = await async_playwright().start()
+        logger.info("Chromium 브라우저 실행 중...")
         self.browser = await self.playwright.chromium.launch(headless=self.headless)
+        logger.info(f"브라우저 실행 완료 (connected: {self.browser.is_connected()})")
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """비동기 컨텍스트 매니저 종료 - 브라우저 및 Playwright 정리"""
+        if exc_type:
+            logger.warning(f"컨텍스트 매니저 종료 (에러 발생): {exc_type.__name__}: {exc_val}")
+
         if self.browser:
-            await self.browser.close()
+            try:
+                logger.info("브라우저 종료 중...")
+                await self.browser.close()
+                logger.info("브라우저 종료 완료")
+            except Exception as e:
+                logger.warning(f"브라우저 종료 실패: {e}")
+
         if self.playwright:
-            await self.playwright.stop()
+            try:
+                logger.info("Playwright 정리 중...")
+                await self.playwright.stop()
+                logger.info("Playwright 정리 완료")
+            except Exception as e:
+                logger.warning(f"Playwright 정리 실패: {e}")
 
     def get_latest_weekly_trend_from_rss(self) -> Optional[WeeklyTrend]:
         """
@@ -368,6 +385,14 @@ class ItfindScraper:
         """
         if not self.browser:
             raise RuntimeError("ItfindScraper must be used as async context manager (async with)")
+
+        # 브라우저 연결 상태 확인
+        try:
+            if not self.browser.is_connected():
+                logger.error("브라우저 연결이 끊어졌습니다")
+                raise RuntimeError("Browser connection lost")
+        except Exception as check_error:
+            logger.warning(f"브라우저 상태 확인 실패: {check_error}")
 
         try:
             logger.info(f"ITFIND PDF 다운로드 시작: {pdf_url}")
