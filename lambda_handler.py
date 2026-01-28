@@ -118,6 +118,9 @@ def handler(event, context):
     mode = event.get("mode", "test")
     is_test_mode = (mode != "opr")
 
+    # 멱등성 체크 비활성화 옵션 (테스트용)
+    skip_idempotency = event.get("skip_idempotency", False)
+
     if is_test_mode:
         logger.info("🧪 TEST 모드로 실행 (수신인: turtlesoup0@gmail.com)")
     else:
@@ -136,33 +139,36 @@ def handler(event, context):
 
     try:
         # 0. 멱등성 보장: 실행 시작 전 기록 (Conditional Put으로 경쟁 조건 방지)
-        logger.info("0단계: 멱등성 보장 - 실행 이력 선기록")
-        exec_tracker = ExecutionTracker()
-        request_id = context.aws_request_id if context else "local"
+        if skip_idempotency:
+            logger.warning("⚠️  멱등성 체크 비활성화 (skip_idempotency=True) - 테스트 목적으로만 사용")
+        else:
+            logger.info("0단계: 멱등성 보장 - 실행 이력 선기록")
+            exec_tracker = ExecutionTracker()
+            request_id = context.aws_request_id if context else "local"
 
-        # 실행 기록 시도 (이미 있으면 ConditionalCheckFailedException 발생)
-        if not exec_tracker.mark_execution(mode, request_id):
-            # 실패 = 이미 오늘 실행됨
-            duration_ms = (time.time() - start_time) * 1000
-            logger.warning(f"⚠️  오늘 이미 {mode} 모드로 실행되었습니다. 중복 실행을 방지합니다.")
+            # 실행 기록 시도 (이미 있으면 ConditionalCheckFailedException 발생)
+            if not exec_tracker.mark_execution(mode, request_id):
+                # 실패 = 이미 오늘 실행됨
+                duration_ms = (time.time() - start_time) * 1000
+                logger.warning(f"⚠️  오늘 이미 {mode} 모드로 실행되었습니다. 중복 실행을 방지합니다.")
 
-            structured_logger.info(
-                event="duplicate_execution_prevented",
-                message=f"오늘 이미 {mode} 모드로 실행됨",
-                execution_mode=mode,
-                duration_ms=duration_ms
-            )
+                structured_logger.info(
+                    event="duplicate_execution_prevented",
+                    message=f"오늘 이미 {mode} 모드로 실행됨",
+                    execution_mode=mode,
+                    duration_ms=duration_ms
+                )
 
-            return {
-                'statusCode': 200,
-                'body': json.dumps({
-                    'message': f'오늘 이미 {mode} 모드로 실행되었습니다 (중복 실행 방지)',
-                    'skipped': True,
-                    'reason': 'already_executed_today'
-                })
-            }
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({
+                        'message': f'오늘 이미 {mode} 모드로 실행되었습니다 (중복 실행 방지)',
+                        'skipped': True,
+                        'reason': 'already_executed_today'
+                    })
+                }
 
-        logger.info(f"✅ 멱등성 보장 완료: 오늘 {mode} 모드 첫 실행 기록됨")
+            logger.info(f"✅ 멱등성 보장 완료: 오늘 {mode} 모드 첫 실행 기록됨")
 
         # DeliveryTracker 초기화 (수신인별 발송 이력 추적용)
         tracker = DeliveryTracker()
