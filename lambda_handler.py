@@ -12,7 +12,6 @@ from datetime import datetime, timezone, timedelta
 from src.scraper import download_pdf_sync
 from src.pdf_processor import process_pdf
 from src.email_sender import send_pdf_bulk_email
-from src.icloud_uploader import upload_to_icloud
 from src.structured_logging import get_structured_logger
 from src.delivery_tracker import DeliveryTracker
 from src.failure_tracker import FailureTracker
@@ -256,17 +255,6 @@ def handler(event, context):
             logger.info("발송 이력 기록 완료")
         else:
             logger.info("5단계: 발송 이력 기록 건너뛰기 (TEST 모드)")
-
-        # 6. iCloud Drive 업로드 (선택사항)
-        logger.info("6단계: iCloud Drive 업로드 시작")
-        try:
-            icloud_success = upload_to_icloud(processed_pdf_path, use_monthly_folder=True)
-            if icloud_success:
-                logger.info("iCloud Drive 업로드 성공")
-            else:
-                logger.warning("iCloud Drive 업로드 실패 (계속 진행)")
-        except Exception as icloud_error:
-            logger.warning(f"iCloud Drive 업로드 중 오류 (계속 진행): {icloud_error}")
 
         duration_ms = (time.time() - start_time) * 1000
 
