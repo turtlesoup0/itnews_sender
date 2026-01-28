@@ -277,22 +277,35 @@ def handler(event, context):
         if is_wednesday():
             logger.info("📅 오늘은 수요일 - ITFIND 주간기술동향 다운로드 시도")
             try:
-                async def download_itfind():
-                    """ITFIND 비동기 다운로드 래퍼"""
-                    async with ItfindScraper(headless=True) as scraper:
-                        trend = await scraper.get_latest_weekly_trend()
-                        if trend:
-                            kst = timezone(timedelta(hours=9))
-                            today_str = datetime.now(kst).strftime("%Y%m%d")
-                            save_path = f"/tmp/itfind_weekly_{today_str}.pdf"
-                            # detail_url 생성 (PDF 다운로드에 필요한 세션 유지용)
-                            detail_url = f"https://www.itfind.or.kr/trend/weekly/weeklyDetail.do?id={trend.detail_id}"
-                            await scraper.download_weekly_pdf(trend.pdf_url, save_path, detail_url=detail_url)
-                            return trend, save_path
-                        return None, None
+                # 1차: 간단한 방식 시도 (브라우저 불필요)
+                scraper_simple = ItfindScraper(headless=True)
+                trend = scraper_simple.get_latest_weekly_trend_from_rss()
 
-                import asyncio
-                itfind_trend_info, itfind_pdf_path = asyncio.run(download_itfind())
+                if trend:
+                    kst = timezone(timedelta(hours=9))
+                    today_str = datetime.now(kst).strftime("%Y%m%d")
+                    save_path = f"/tmp/itfind_weekly_{today_str}.pdf"
+
+                    try:
+                        # 브라우저 방식으로 다운로드 (Lambda 환경에서 작동)
+                        async def download_itfind_browser():
+                            """ITFIND 브라우저 다운로드 래퍼"""
+                            async with ItfindScraper(headless=True) as scraper:
+                                # trend는 이미 있으므로 바로 다운로드
+                                detail_url = f"https://www.itfind.or.kr/trend/weekly/weeklyDetail.do?id={trend.detail_id}"
+                                await scraper.download_weekly_pdf(trend.pdf_url, save_path, detail_url=detail_url)
+                                return trend, save_path
+
+                        import asyncio
+                        itfind_trend_info, itfind_pdf_path = asyncio.run(download_itfind_browser())
+                        logger.info("✅ ITFIND 브라우저 다운로드 성공")
+                    except Exception as browser_error:
+                        logger.warning(f"브라우저 다운로드 실패: {browser_error}")
+                        # 다운로드 실패해도 전자신문은 발송
+                        itfind_trend_info, itfind_pdf_path = None, None
+                else:
+                    logger.warning("RSS에서 주간기술동향을 찾을 수 없습니다")
+                    itfind_trend_info, itfind_pdf_path = None, None
 
                 if itfind_trend_info and itfind_pdf_path:
                     logger.info(f"ITFIND PDF 다운로드 완료: {itfind_pdf_path}")

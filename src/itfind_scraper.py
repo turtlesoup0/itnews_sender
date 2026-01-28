@@ -363,6 +363,58 @@ class ItfindScraper:
 
         return topics[:5]  # 최대 5개만 반환
 
+    def download_weekly_pdf_simple(
+        self,
+        pdf_url: str,
+        save_path: str
+    ) -> str:
+        """
+        주간기술동향 PDF 간단 다운로드 (브라우저 불필요)
+
+        Args:
+            pdf_url: PDF 다운로드 URL (RSS에서 얻은 URL)
+            save_path: 저장 경로
+
+        Returns:
+            str: 다운로드된 PDF 파일 경로
+
+        Raises:
+            Exception: 다운로드 실패 시
+        """
+        try:
+            logger.info(f"ITFIND PDF 간단 다운로드 시작: {pdf_url}")
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/pdf,application/octet-stream,*/*',
+                'Referer': 'https://www.itfind.or.kr/'
+            }
+
+            response = requests.get(pdf_url, headers=headers, timeout=60, stream=True)
+            response.raise_for_status()
+
+            content = response.content
+            content_type = response.headers.get('content-type', '').lower()
+
+            # PDF 검증
+            if content[:5] != b'%PDF-':
+                logger.warning(f"응답이 PDF가 아닙니다: content-type={content_type}, size={len(content)}")
+                raise ValueError("Downloaded file is not a PDF")
+
+            # 파일 저장
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            with open(save_path, 'wb') as f:
+                f.write(content)
+
+            file_size = os.path.getsize(save_path)
+            logger.info(f"✅ ITFIND PDF 간단 다운로드 성공: {file_size:,} bytes")
+
+            return save_path
+
+        except Exception as e:
+            logger.error(f"ITFIND PDF 간단 다운로드 실패: {e}")
+            raise
+
     async def download_weekly_pdf(
         self,
         pdf_url: str,
