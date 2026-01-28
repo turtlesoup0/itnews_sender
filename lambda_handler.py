@@ -7,7 +7,7 @@ import os
 import json
 import time
 import re
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from src.scraper import download_pdf_sync
 from src.pdf_processor import process_pdf
@@ -17,6 +17,7 @@ from src.structured_logging import get_structured_logger
 from src.delivery_tracker import DeliveryTracker
 from src.failure_tracker import FailureTracker
 from src.execution_tracker import ExecutionTracker
+from src.itfind_scraper import ItfindScraper
 
 # 로깅 설정
 logging.basicConfig(
@@ -25,6 +26,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 structured_logger = get_structured_logger(__name__)
+
+
+def is_wednesday() -> bool:
+    """
+    오늘이 수요일인지 확인 (KST 기준)
+
+    Returns:
+        bool: 수요일이면 True
+    """
+    kst = timezone(timedelta(hours=9))
+    now_kst = datetime.now(kst)
+    return now_kst.weekday() == 2  # 0=월요일, 2=수요일
 
 
 def sanitize_error(error_msg: str) -> str:
@@ -183,10 +196,10 @@ def handler(event, context):
         logger.info("✅ 실패 제한 체크 완료: 발송 진행 가능")
 
         # 2. PDF 다운로드 및 페이지 정보 수집
-        logger.info("2단계: PDF 다운로드 시작")
+        logger.info("2단계: 전자신문 PDF 다운로드 시작")
         try:
             pdf_path, page_info = download_pdf_sync()
-            logger.info(f"PDF 다운로드 완료: {pdf_path}")
+            logger.info(f"전자신문 PDF 다운로드 완료: {pdf_path}")
 
             # 성공 시 실패 카운트 리셋
             failure_tracker.reset_today()
@@ -245,14 +258,60 @@ def handler(event, context):
 
             raise
 
-        # 3. 광고 페이지 제거
-        logger.info("3단계: 광고 페이지 제거 시작")
+        # 2-1. 수요일이면 ITFIND 주간기술동향도 다운로드
+        itfind_pdf_path = None
+        itfind_trend_info = None
+
+        if is_wednesday():
+            logger.info("📅 오늘은 수요일 - ITFIND 주간기술동향 다운로드 시도")
+            try:
+                async def download_itfind():
+                    """ITFIND 비동기 다운로드 래퍼"""
+                    async with ItfindScraper(headless=True) as scraper:
+                        trend = await scraper.get_latest_weekly_trend()
+                        if trend:
+                            kst = timezone(timedelta(hours=9))
+                            today_str = datetime.now(kst).strftime("%Y%m%d")
+                            save_path = f"/tmp/itfind_weekly_{today_str}.pdf"
+                            await scraper.download_weekly_pdf(trend.pdf_url, save_path)
+                            return trend, save_path
+                        return None, None
+
+                import asyncio
+                itfind_trend_info, itfind_pdf_path = asyncio.run(download_itfind())
+
+                if itfind_trend_info and itfind_pdf_path:
+                    logger.info(f"ITFIND PDF 다운로드 완료: {itfind_pdf_path}")
+                    logger.info(f"주간기술동향: {itfind_trend_info.title} ({itfind_trend_info.issue_number})")
+                else:
+                    logger.warning("이번주 주간기술동향을 찾을 수 없습니다")
+
+            except Exception as itfind_error:
+                # ITFIND 실패해도 전자신문 발송은 계속
+                logger.error(f"ITFIND 다운로드 실패 (무시하고 계속): {itfind_error}")
+                structured_logger.warning(
+                    event="itfind_download_failed",
+                    message="ITFIND 주간기술동향 다운로드 실패",
+                    error=str(itfind_error)
+                )
+                itfind_pdf_path = None
+                itfind_trend_info = None
+        else:
+            logger.info("📅 오늘은 수요일이 아님 - ITFIND 다운로드 건너뛰기")
+
+        # 3. 광고 페이지 제거 (전자신문만)
+        logger.info("3단계: 전자신문 광고 페이지 제거 시작")
         processed_pdf_path = process_pdf(pdf_path, page_info)
-        logger.info(f"PDF 처리 완료: {processed_pdf_path}")
+        logger.info(f"전자신문 PDF 처리 완료: {processed_pdf_path}")
 
         # 4. 이메일 전송 (모드에 따라 수신인 결정)
         logger.info("4단계: 이메일 전송 시작")
-        email_success, success_emails = send_pdf_bulk_email(processed_pdf_path, test_mode=is_test_mode)
+        email_success, success_emails = send_pdf_bulk_email(
+            processed_pdf_path,
+            test_mode=is_test_mode,
+            itfind_pdf_path=itfind_pdf_path,
+            itfind_info=itfind_trend_info
+        )
 
         if not email_success:
             logger.error("이메일 전송 실패")
@@ -325,7 +384,7 @@ def handler(event, context):
 
     finally:
         # 임시 파일 정리
-        cleanup_temp_files(pdf_path, processed_pdf_path)
+        cleanup_temp_files(pdf_path, processed_pdf_path, itfind_pdf_path if 'itfind_pdf_path' in locals() else None)
 
 
 def cleanup_temp_files(*file_paths):

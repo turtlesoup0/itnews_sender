@@ -9,11 +9,15 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
+from urllib.parse import quote
 
 from .config import Config
 from .recipients import get_active_recipients
 from .unsubscribe_token import generate_token
+
+if TYPE_CHECKING:
+    from .itfind_scraper import WeeklyTrend
 
 logger = logging.getLogger(__name__)
 
@@ -75,14 +79,18 @@ class EmailSender:
         pdf_path: str,
         subject: Optional[str] = None,
         test_mode: bool = False,
+        itfind_pdf_path: Optional[str] = None,
+        itfind_info: Optional["WeeklyTrend"] = None,
     ) -> tuple[bool, List[str]]:
         """
         PDF 파일을 다중 수신자에게 개별 전송 (개인화된 수신거부 링크 포함)
 
         Args:
-            pdf_path: 전송할 PDF 파일 경로
+            pdf_path: 전송할 PDF 파일 경로 (전자신문)
             subject: 이메일 제목 (None이면 자동 생성)
             test_mode: True면 turtlesoup0@gmail.com에게만 발송 (테스트용)
+            itfind_pdf_path: ITFIND 주간기술동향 PDF 경로 (수요일만, Optional)
+            itfind_info: ITFIND 주간기술동향 정보 (Optional)
 
         Returns:
             (전송 성공 여부, 성공한 수신인 이메일 리스트)
@@ -127,7 +135,9 @@ class EmailSender:
                         [recipient.email],
                         subject,
                         use_bcc=False,
-                        recipient_email=recipient.email
+                        recipient_email=recipient.email,
+                        itfind_pdf_path=itfind_pdf_path,
+                        itfind_info=itfind_info
                     )
 
                     # SMTP 서버 연결 및 전송
@@ -148,7 +158,14 @@ class EmailSender:
             return False, []
 
     def _create_message(
-        self, pdf_path: str, to_emails: List[str], subject: str, use_bcc: bool = False, recipient_email: Optional[str] = None
+        self,
+        pdf_path: str,
+        to_emails: List[str],
+        subject: str,
+        use_bcc: bool = False,
+        recipient_email: Optional[str] = None,
+        itfind_pdf_path: Optional[str] = None,
+        itfind_info: Optional["WeeklyTrend"] = None
     ) -> MIMEMultipart:
         """이메일 메시지 생성"""
 
@@ -166,11 +183,15 @@ class EmailSender:
             msg["To"] = ", ".join(to_emails)
 
         # 이메일 본문 생성 (개인화된 수신거부 링크)
-        body = self._create_email_body(recipient_email)
+        body = self._create_email_body(recipient_email, itfind_info)
         msg.attach(MIMEText(body, "html", "utf-8"))
 
-        # PDF 파일 첨부
-        self._attach_pdf(msg, pdf_path)
+        # 전자신문 PDF 파일 첨부 (항상)
+        self._attach_pdf(msg, pdf_path, "etnews")
+
+        # ITFIND PDF 파일 첨부 (수요일만)
+        if itfind_pdf_path and os.path.exists(itfind_pdf_path):
+            self._attach_pdf(msg, itfind_pdf_path, "itfind")
 
         return msg
 
@@ -186,7 +207,7 @@ class EmailSender:
         """
         return generate_token(email, self.unsubscribe_secret)
 
-    def _create_email_body(self, recipient_email: Optional[str] = None) -> str:
+    def _create_email_body(self, recipient_email: Optional[str] = None, itfind_info: Optional["WeeklyTrend"] = None) -> str:
         """이메일 본문 HTML 생성"""
         today = datetime.now().strftime("%Y년 %m월 %d일")
 
@@ -196,6 +217,7 @@ class EmailSender:
             token = self._generate_unsubscribe_token(recipient_email)
             unsubscribe_url = f"{self.unsubscribe_url_base}/?token={token}"
 
+        # 기본 본문
         body = f"""
         <html>
             <head></head>
@@ -204,6 +226,26 @@ class EmailSender:
                 <p>안녕하세요,</p>
                 <p>{today} IT뉴스 PDF 뉴스지면을 보내드립니다.</p>
                 <p>광고 페이지가 제거된 파일입니다.</p>
+        """
+
+        # 수요일 ITFIND 정보 추가
+        if itfind_info:
+            topics_html = "<br>".join([f"• {topic}" for topic in itfind_info.topics])
+            body += f"""
+                <hr style="margin: 20px 0;">
+                <h3>📚 이번주 주간기술동향 ({itfind_info.issue_number})</h3>
+                <p><strong>{itfind_info.title}</strong></p>
+                <p>주요 토픽:</p>
+                <div style="margin-left: 20px;">
+                    {topics_html}
+                </div>
+                <p style="color: #666; font-size: 0.9em;">
+                    출처: <a href="https://www.itfind.or.kr/trend/weekly/weekly.do" style="color: #0066cc;">정보통신기획평가원 (IITP)</a>
+                </p>
+            """
+
+        # 마무리 부분
+        body += f"""
                 <br>
                 <p>이 이메일은 자동으로 발송되었습니다.</p>
                 <p style="color: #666; font-size: 0.9em;">
@@ -220,8 +262,14 @@ class EmailSender:
         """
         return body
 
-    def _attach_pdf(self, msg: MIMEMultipart, pdf_path: str):
-        """PDF 파일을 이메일에 첨부"""
+    def _attach_pdf(self, msg: MIMEMultipart, pdf_path: str, pdf_type: str = "etnews"):
+        """PDF 파일을 이메일에 첨부
+
+        Args:
+            msg: 이메일 메시지 객체
+            pdf_path: PDF 파일 경로
+            pdf_type: PDF 타입 ("etnews" 또는 "itfind")
+        """
         try:
             with open(pdf_path, "rb") as pdf_file:
                 pdf_data = pdf_file.read()
@@ -229,14 +277,20 @@ class EmailSender:
             # PDF 첨부 파일 생성
             pdf_attachment = MIMEApplication(pdf_data, _subtype="pdf")
 
-            # 파일명 설정
-            filename = os.path.basename(pdf_path)
+            # 파일명 결정
+            if pdf_type == "itfind":
+                filename = f"ITFIND_주간기술동향_{datetime.now().strftime('%Y%m%d')}.pdf"
+            else:
+                filename = os.path.basename(pdf_path)
+
+            # UTF-8 인코딩된 파일명 설정 (RFC 2231)
             pdf_attachment.add_header(
-                "Content-Disposition", f"attachment; filename={filename}"
+                "Content-Disposition",
+                f"attachment; filename*=UTF-8''{quote(filename)}"
             )
 
             msg.attach(pdf_attachment)
-            logger.info(f"PDF 파일 첨부 완료: {filename} ({len(pdf_data)} bytes)")
+            logger.info(f"PDF 파일 첨부 완료: {filename} ({len(pdf_data):,} bytes)")
 
         except Exception as e:
             logger.error(f"PDF 파일 첨부 실패: {e}")
@@ -307,20 +361,28 @@ def send_pdf_email(
     return sender.send_email(pdf_path, recipient, subject)
 
 
-def send_pdf_bulk_email(pdf_path: str, subject: Optional[str] = None, test_mode: bool = False) -> tuple[bool, List[str]]:
+def send_pdf_bulk_email(
+    pdf_path: str,
+    subject: Optional[str] = None,
+    test_mode: bool = False,
+    itfind_pdf_path: Optional[str] = None,
+    itfind_info: Optional["WeeklyTrend"] = None
+) -> tuple[bool, List[str]]:
     """
     PDF 이메일 전송 메인 함수 (다중 수신자 개별 전송)
 
     Args:
-        pdf_path: 전송할 PDF 파일 경로
+        pdf_path: 전송할 PDF 파일 경로 (전자신문)
         subject: 이메일 제목
         test_mode: True면 테스트 모드 (turtlesoup0@gmail.com에게만 발송)
+        itfind_pdf_path: ITFIND 주간기술동향 PDF 경로 (수요일만, Optional)
+        itfind_info: ITFIND 주간기술동향 정보 (Optional)
 
     Returns:
         (전송 성공 여부, 성공한 수신인 이메일 리스트)
     """
     sender = EmailSender()
-    return sender.send_bulk_email(pdf_path, subject, test_mode)
+    return sender.send_bulk_email(pdf_path, subject, test_mode, itfind_pdf_path, itfind_info)
 
 
 if __name__ == "__main__":
