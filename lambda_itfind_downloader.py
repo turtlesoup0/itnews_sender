@@ -2,11 +2,10 @@
 """
 ITFIND 주간기술동향 PDF 다운로드 Lambda 함수
 
-매주 수요일 EventBridge로 트리거되어:
+매주 수요일 메인 Lambda에서 호출:
 1. 최신 주간기술동향 조회 (RSS)
-2. PDF 다운로드 (Playwright)
-3. S3에 저장
-4. 메타데이터 반환
+2. PDF 다운로드 (브라우저 없이!)
+3. base64로 인코딩하여 반환
 """
 import logging
 import os
@@ -14,7 +13,7 @@ import sys
 import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
-import boto3
+import base64
 
 # 로컬 개발 환경에서 src 디렉토리를 PYTHONPATH에 추가
 if os.path.exists('/var/task/src'):
@@ -30,10 +29,6 @@ import re
 # 로깅 설정
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-
-# S3 클라이언트
-s3_client = boto3.client('s3')
-S3_BUCKET = os.environ.get('S3_BUCKET', 'itnews-sender-pdfs')
 
 
 def get_latest_weekly_trend_from_rss():
@@ -232,16 +227,17 @@ def download_pdf_direct(streamdocs_id: str, save_path: str) -> bool:
 
 async def download_itfind_pdf() -> Optional[Dict[str, Any]]:
     """
-    ITFIND 주간기술동향 PDF 다운로드
+    ITFIND 주간기술동향 PDF 다운로드 (브라우저 없이!)
 
     Returns:
         Dict: {
             'title': str,
             'issue_number': str,
             'publish_date': str,
-            'local_path': str,
-            's3_key': str,
-            'file_size': int
+            'filename': str,
+            'file_size': int,
+            'streamdocs_id': str,
+            'pdf_base64': str  # base64 인코딩된 PDF 데이터
         } or None
     """
     try:
@@ -281,40 +277,24 @@ async def download_itfind_pdf() -> Optional[Dict[str, Any]]:
 
         file_size = os.path.getsize(local_path)
 
-        # 4. S3에 업로드
-        logger.info("4단계: S3에 업로드")
-        s3_key = f"itfind/{today_str}/weekly_{trend['issue_number']}.pdf"
-
+        # 4. PDF를 base64로 인코딩하여 반환 (S3 불필요!)
+        logger.info("4단계: PDF base64 인코딩")
         with open(local_path, 'rb') as f:
-            # S3 Metadata는 ASCII만 허용하므로 한글 제목 제외
-            s3_client.put_object(
-                Bucket=S3_BUCKET,
-                Key=s3_key,
-                Body=f,
-                ContentType='application/pdf',
-                Metadata={
-                    'issue_number': trend['issue_number'],
-                    'publish_date': trend['publish_date'],
-                    'download_date': today_str,
-                    'streamdocs_id': streamdocs_id
-                }
-            )
-
-        logger.info(f"✅ S3 업로드 완료: s3://{S3_BUCKET}/{s3_key}")
+            pdf_data = f.read()
+            pdf_base64 = base64.b64encode(pdf_data).decode('utf-8')
 
         logger.info("=" * 60)
-        logger.info("✅ ITFIND PDF 다운로드 및 업로드 성공")
+        logger.info("✅ ITFIND PDF 다운로드 성공")
         logger.info("=" * 60)
 
         return {
             'title': trend['title'],
             'issue_number': trend['issue_number'],
             'publish_date': trend['publish_date'],
-            'local_path': local_path,
-            's3_bucket': S3_BUCKET,
-            's3_key': s3_key,
+            'filename': f"ITFIND_주간기술동향_{trend['issue_number']}호_{today_str}.pdf",
             'file_size': file_size,
-            'streamdocs_id': streamdocs_id
+            'streamdocs_id': streamdocs_id,
+            'pdf_base64': pdf_base64  # base64 인코딩된 PDF
         }
 
     except Exception as e:
@@ -344,23 +324,15 @@ def handler(event, context):
         result = asyncio.run(download_itfind_pdf())
 
         if result:
-            logger.info("=" * 60)
-            logger.info("✅ ITFIND PDF 다운로드 및 S3 업로드 성공")
-            logger.info("=" * 60)
-
             return {
                 'statusCode': 200,
                 'body': {
                     'success': True,
-                    'message': 'ITFIND PDF downloaded and uploaded to S3',
+                    'message': 'ITFIND PDF downloaded successfully',
                     'data': result
                 }
             }
         else:
-            logger.warning("=" * 60)
-            logger.warning("⚠️ ITFIND PDF 다운로드 실패")
-            logger.warning("=" * 60)
-
             return {
                 'statusCode': 404,
                 'body': {

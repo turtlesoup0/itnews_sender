@@ -277,41 +277,52 @@ def handler(event, context):
         if is_wednesday():
             logger.info("📅 오늘은 수요일 - ITFIND 주간기술동향 다운로드 시도")
             try:
-                # 1차: 간단한 방식 시도 (브라우저 불필요)
-                scraper_simple = ItfindScraper(headless=True)
-                trend = scraper_simple.get_latest_weekly_trend_from_rss()
+                # ITFIND Lambda 함수 호출 (별도 Lambda에서 브라우저 없이 다운로드)
+                import boto3
+                import base64
 
-                if trend:
-                    kst = timezone(timedelta(hours=9))
-                    today_str = datetime.now(kst).strftime("%Y%m%d")
-                    save_path = f"/tmp/itfind_weekly_{today_str}.pdf"
+                lambda_client = boto3.client('lambda')
 
-                    try:
-                        # 브라우저 방식으로 다운로드 (Lambda 환경에서 작동)
-                        async def download_itfind_browser():
-                            """ITFIND 브라우저 다운로드 래퍼"""
-                            async with ItfindScraper(headless=True) as scraper:
-                                # trend는 이미 있으므로 바로 다운로드
-                                detail_url = f"https://www.itfind.or.kr/trend/weekly/weeklyDetail.do?id={trend.detail_id}"
-                                await scraper.download_weekly_pdf(trend.pdf_url, save_path, detail_url=detail_url)
-                                return trend, save_path
+                logger.info("ITFIND Lambda 함수 호출 중...")
+                response = lambda_client.invoke(
+                    FunctionName='itfind-pdf-downloader',
+                    InvocationType='RequestResponse',  # 동기 호출
+                    Payload=json.dumps({})
+                )
 
-                        import asyncio
-                        itfind_trend_info, itfind_pdf_path = asyncio.run(download_itfind_browser())
-                        logger.info("✅ ITFIND 브라우저 다운로드 성공")
-                    except Exception as browser_error:
-                        logger.warning(f"브라우저 다운로드 실패: {browser_error}")
-                        # 다운로드 실패해도 전자신문은 발송
-                        itfind_trend_info, itfind_pdf_path = None, None
+                result_payload = json.loads(response['Payload'].read())
+                logger.info(f"ITFIND Lambda 응답: statusCode={result_payload.get('statusCode')}")
+
+                if result_payload.get('statusCode') == 200 and result_payload['body']['success']:
+                    data = result_payload['body']['data']
+
+                    # base64 디코딩하여 /tmp에 저장
+                    pdf_base64 = data['pdf_base64']
+                    pdf_data = base64.b64decode(pdf_base64)
+
+                    itfind_pdf_path = f"/tmp/{data['filename']}"
+                    with open(itfind_pdf_path, 'wb') as f:
+                        f.write(pdf_data)
+
+                    logger.info(f"✅ ITFIND PDF 다운로드 성공: {itfind_pdf_path}")
+                    logger.info(f"   제목: {data['title']}")
+                    logger.info(f"   호수: {data['issue_number']}호")
+                    logger.info(f"   크기: {data['file_size']:,} bytes")
+
+                    # itfind_trend_info 객체 생성 (이메일 발송용)
+                    from collections import namedtuple
+                    WeeklyTrend = namedtuple('WeeklyTrend', ['title', 'issue_number', 'publish_date', 'pdf_url', 'topics', 'detail_id'])
+                    itfind_trend_info = WeeklyTrend(
+                        title=data['title'],
+                        issue_number=data['issue_number'],
+                        publish_date=data['publish_date'],
+                        pdf_url='',
+                        topics=[],
+                        detail_id=''
+                    )
                 else:
-                    logger.warning("RSS에서 주간기술동향을 찾을 수 없습니다")
+                    logger.warning(f"ITFIND Lambda 실패: {result_payload}")
                     itfind_trend_info, itfind_pdf_path = None, None
-
-                if itfind_trend_info and itfind_pdf_path:
-                    logger.info(f"ITFIND PDF 다운로드 완료: {itfind_pdf_path}")
-                    logger.info(f"주간기술동향: {itfind_trend_info.title} ({itfind_trend_info.issue_number})")
-                else:
-                    logger.warning("이번주 주간기술동향을 찾을 수 없습니다")
 
             except Exception as itfind_error:
                 # ITFIND 실패해도 전자신문 발송은 계속
