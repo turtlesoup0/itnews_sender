@@ -262,6 +262,12 @@ def handler(event, context):
         itfind_pdf_path = None
         itfind_trend_info = None
 
+        # 디버깅: 현재 시각 로깅
+        kst = timezone(timedelta(hours=9))
+        now_kst = datetime.now(kst)
+        now_utc = datetime.now(timezone.utc)
+        logger.info(f"현재 시각 - UTC: {now_utc.strftime('%Y-%m-%d %H:%M:%S %Z')}, KST: {now_kst.strftime('%Y-%m-%d %H:%M:%S %Z')}, weekday: {now_kst.weekday()}")
+
         if is_wednesday():
             logger.info("📅 오늘은 수요일 - ITFIND 주간기술동향 다운로드 시도")
             try:
