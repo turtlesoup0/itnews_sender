@@ -11,16 +11,28 @@ OUTPUT_FILE="/tmp/lambda_test_response.json"
 # 기본값: TEST 모드
 MODE="${1:-test}"
 
+# 두 번째 인자: skip-idempotency 옵션
+SKIP_IDEMPOTENCY="${2:-false}"
+
 echo "===== Lambda 테스트 실행 ====="
 echo "모드: $MODE"
+if [ "$SKIP_IDEMPOTENCY" = "skip-idempotency" ]; then
+  echo "멱등성 체크: 비활성화 (재실행 가능)"
+else
+  echo "멱등성 체크: 활성화"
+fi
 echo "함수: $FUNCTION_NAME"
 echo ""
 
 # Timeout 충분히 설정 (5분)
 echo "Lambda 호출 중... (최대 5분 대기)"
 
-# Payload를 Base64 인코딩
-PAYLOAD=$(echo -n "{\"mode\": \"$MODE\"}" | base64)
+# Payload 생성
+if [ "$SKIP_IDEMPOTENCY" = "skip-idempotency" ]; then
+  PAYLOAD=$(echo -n "{\"mode\": \"$MODE\", \"skip_idempotency\": true}" | base64)
+else
+  PAYLOAD=$(echo -n "{\"mode\": \"$MODE\"}" | base64)
+fi
 
 aws lambda invoke \
   --function-name "$FUNCTION_NAME" \
@@ -43,3 +55,9 @@ aws logs tail /aws/lambda/"$FUNCTION_NAME" \
 
 echo ""
 echo "===== 완료 ====="
+echo ""
+echo "사용법:"
+echo "  일반 테스트 (멱등성 O):     ./scripts/test_lambda.sh test"
+echo "  재실행 가능 (멱등성 X):     ./scripts/test_lambda.sh test skip-idempotency"
+echo "  OPR 모드:                   ./scripts/test_lambda.sh opr"
+echo ""
